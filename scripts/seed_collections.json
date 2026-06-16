@@ -1,0 +1,275 @@
+{
+  "collections": [
+    {
+      "name": "budget_categories",
+      "type": "base",
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "slug",
+          "type": "text",
+          "required": true,
+          "max": 100
+        },
+        {
+          "name": "description",
+          "type": "editor"
+        },
+        {
+          "name": "icon",
+          "type": "text"
+        },
+        {
+          "name": "color",
+          "type": "text"
+        },
+        {
+          "name": "sort_order",
+          "type": "number"
+        },
+        {
+          "name": "deleted_at",
+          "type": "date"
+        }
+      ]
+    },
+    {
+      "name": "budget_subcategories",
+      "type": "base",
+      "fields": [
+        {
+          "name": "name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "slug",
+          "type": "text",
+          "required": true,
+          "max": 100
+        },
+        {
+          "name": "description",
+          "type": "editor"
+        },
+        {
+          "name": "category",
+          "type": "relation",
+          "collectionId": "@budget_categories",
+          "maxSelect": 1
+        },
+        {
+          "name": "sort_order",
+          "type": "number"
+        },
+        {
+          "name": "deleted_at",
+          "type": "date"
+        }
+      ]
+    },
+    {
+      "name": "budgets",
+      "type": "base",
+      "fields": [
+        {
+          "name": "category",
+          "type": "relation",
+          "collectionId": "@budget_categories",
+          "maxSelect": 1
+        },
+        {
+          "name": "subcategory",
+          "type": "relation",
+          "collectionId": "@budget_subcategories",
+          "maxSelect": 1
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": true
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "created_at",
+          "type": "date",
+          "auto": true
+        },
+        {
+          "name": "deleted_at",
+          "type": "date"
+        }
+      ]
+    },
+    {
+      "name": "transactions",
+      "type": "base",
+      "listRule": "@request.auth.id != ''",
+      "viewRule": "@request.auth.id != ''",
+      "fields": [
+        {
+          "name": "category",
+          "type": "relation",
+          "collectionId": "@budget_categories",
+          "maxSelect": 1
+        },
+        {
+          "name": "subcategory",
+          "type": "relation",
+          "collectionId": "@budget_subcategories",
+          "maxSelect": 1
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "editor"
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": true
+        },
+        {
+          "name": "date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "payment_method",
+          "type": "select",
+          "values": [
+            "cash",
+            "debit",
+            "credit",
+            "digital_wallet"
+          ]
+        },
+        {
+          "name": "source",
+          "type": "select",
+          "values": [
+            "manual",
+            "telegram",
+            "import"
+          ]
+        },
+        {
+          "name": "telegram_message_id",
+          "type": "text"
+        },
+        {
+          "name": "deleted_at",
+          "type": "date"
+        }
+      ]
+    },
+    {
+      "name": "budget_daily_allowance",
+      "type": "base",
+      "fields": [
+        {
+          "name": "budget",
+          "type": "relation",
+          "collectionId": "@budgets",
+          "maxSelect": 1
+        },
+        {
+          "name": "date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "allowance_cents",
+          "type": "number",
+          "required": true
+        },
+        {
+          "name": "spent_cents",
+          "type": "number",
+          "default": 0
+        },
+        {
+          "name": "remaining_cents",
+          "type": "number",
+          "auto": true
+        },
+        {
+          "name": "last_updated",
+          "type": "date",
+          "auto": true
+        }
+      ]
+    },
+    {
+      "name": "telegram_users",
+      "type": "base",
+      "fields": [
+        {
+          "name": "telegram_id",
+          "type": "number",
+          "required": true,
+          "unique": true
+        },
+        {
+          "name": "username",
+          "type": "text"
+        },
+        {
+          "name": "first_name",
+          "type": "text"
+        },
+        {
+          "name": "last_name",
+          "type": "text"
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "last_seen",
+          "type": "date"
+        }
+      ]
+    },
+    {
+      "name": "telegram_settings",
+      "type": "base",
+      "fields": [
+        {
+          "name": "key",
+          "type": "text",
+          "required": true,
+          "unique": true
+        },
+        {
+          "name": "value",
+          "type": "json"
+        },
+        {
+          "name": "updated_at",
+          "type": "date",
+          "auto": true
+        }
+      ]
+    }
+  ]
+}

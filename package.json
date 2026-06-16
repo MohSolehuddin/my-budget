@@ -1,0 +1,28 @@
+{
+  "name": "my-budget",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "tsc --noEmit",
+    "start": "bun run src/index.ts",
+    "telegram": "bun run src/infrastructure/telegram/Bot.ts",
+    "docker:build": "docker build -t my-budget .",
+    "docker:run": "docker run -p 3001:3001 --env-file .env my-budget"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.8.0",
+    "@types/pg": "^8.20.0",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@actual-app/api": "^26.5.2",
+    "@fastify/cors": "^11.0.0",
+    "@fastify/jwt": "^10.0.0",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.8.5",
+    "telegraf": "^4.16.3"
+  }
+}
