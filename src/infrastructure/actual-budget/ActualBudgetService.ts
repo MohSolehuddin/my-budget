@@ -2,101 +2,103 @@ import type { IActualBudgetService } from '../../domain/interfaces/IActualBudget
 import type { TransactionInput, ImportTransactionsResult, Account, Category } from '../../domain/entities/index';
 
 export class ActualBudgetService implements IActualBudgetService {
-  private serverUrl: string;
-  private password?: string;
+  private baseUrl: string;
+  private apiKey: string;
   private syncId: string;
-  private dataDir: string;
-  private e2eePassword?: string;
-  private isInitialized = false;
 
   constructor(
     serverUrl: string,
     password: string | undefined,
     syncId: string,
-    dataDir: string = './budget-data',
-    e2eePassword?: string
+    _dataDir: string = './budget-data',
+    _e2eePassword?: string
   ) {
-    this.serverUrl = serverUrl;
-    this.password = password;
+    this.baseUrl = (process.env.ACTUAL_HTTP_API_URL || 'http://localhost:5007').replace(/\/$/, '');
+    this.apiKey = process.env.ACTUAL_HTTP_API_KEY || '';
     this.syncId = syncId;
-    this.dataDir = dataDir;
-    this.e2eePassword = e2eePassword;
   }
 
   async init(): Promise<void> {
-    if (this.isInitialized) {
-      console.log('Actual Budget already initialized, skipping...');
-      return;
+    if (!this.apiKey || !this.syncId) {
+      throw new Error('Missing ACTUAL_HTTP_API_KEY or ACTUAL_SYNC_ID');
     }
-
-    if (!this.serverUrl || !this.password || !this.syncId) {
-      throw new Error('Missing serverUrl, password, or syncId for Actual Budget');
+    // Verify connection by fetching budgets
+    const res = await this.request('GET', '/v1/budgets');
+    const budgets = Array.isArray(res.data) ? res.data : [];
+    const budget = budgets.find((b: any) => b.groupId === this.syncId);
+    if (!budget) {
+      throw new Error(`Budget sync id ${this.syncId} not found in Actual HTTP API`);
     }
-
-    const api = await import('@actual-app/api');
-    await api.init({
-      serverURL: this.serverUrl,
-      password: this.password,
-      dataDir: this.dataDir,
-    });
-
-    this.isInitialized = true;
   }
 
   async downloadBudget(): Promise<void> {
-    this.ensureInitialized();
-    const api = await import('@actual-app/api');
-    const options: Record<string, unknown> = {};
-    if (this.e2eePassword) {
-      options.password = this.e2eePassword;
-    }
-    await api.downloadBudget(this.syncId, options);
+    // HTTP API opens budget per request, no local download needed
   }
 
   async getAccounts(): Promise<Account[]> {
-    this.ensureInitialized();
-    const api = await import('@actual-app/api');
-    return await api.getAccounts() as Account[];
+    const res = await this.budgetRequest('GET', '/accounts');
+    return (res.data || []).map((a: any) => ({ id: a.id, name: a.name }));
   }
 
   async getCategories(): Promise<Category[]> {
-    this.ensureInitialized();
-    const api = await import('@actual-app/api');
-    return await api.getCategories() as Category[];
+    const res = await this.budgetRequest('GET', '/categories');
+    return (res.data || []).map((c: any) => ({ id: c.id, name: c.name }));
   }
 
   async addTransactions(accountId: string, transactions: TransactionInput[]): Promise<void> {
-    this.ensureInitialized();
-    const api = await import('@actual-app/api');
-    await api.addTransactions(accountId, transactions);
+    await this.importTransactions(accountId, transactions);
   }
 
   async importTransactions(accountId: string, transactions: TransactionInput[]): Promise<ImportTransactionsResult> {
-    this.ensureInitialized();
-    const api = await import('@actual-app/api');
-    const transactionsWithAccount = transactions.map(tx => ({ ...tx, account: accountId }));
-    const result = await api.importTransactions(accountId, transactionsWithAccount);
+    const payload = transactions.map((tx) => ({
+      account: accountId,
+      date: tx.date,
+      amount: tx.amount,
+      payee_name: tx.payee_name,
+      category: tx.category || undefined,
+      notes: tx.notes || '',
+      imported_id: tx.imported_id || `telegram-${Date.now()}`,
+    }));
+
+    const res = await this.budgetRequest(
+      'POST',
+      `/accounts/${accountId}/transactions/batch`,
+      { transactions: payload, learnCategories: false, runTransfers: false }
+    );
+
     return {
-      added: result?.added?.length ?? 0,
-      updated: result?.updated?.length ?? 0,
+      added: res.message === 'ok' ? transactions.length : 0,
+      updated: 0,
     };
   }
 
   async shutdown(): Promise<void> {
-    if (!this.isInitialized) return;
+    // HTTP API is stateless
+  }
+
+  private async request(method: string, path: string, body?: any): Promise<any> {
+    const url = `${this.baseUrl}${path}`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-api-key': this.apiKey,
+    };
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`Actual HTTP API ${method} ${path} failed: ${res.status} ${text}`);
+    }
     try {
-      const api = await import('@actual-app/api');
-      await api.shutdown();
-      this.isInitialized = false;
-      console.log('Actual Budget shut down cleanly.');
-    } catch (error) {
-      console.error('Error shutting down Actual Budget:', error);
+      return text ? JSON.parse(text) : {};
+    } catch {
+      return { data: text };
     }
   }
 
-  private ensureInitialized(): void {
-    if (!this.isInitialized) {
-      throw new Error('ActualBudgetService is not initialized. Call init() first.');
-    }
+  private async budgetRequest(method: string, path: string, body?: any): Promise<any> {
+    return this.request(method, `/v1/budgets/${this.syncId}${path}`, body);
   }
 }

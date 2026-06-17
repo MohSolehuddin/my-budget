@@ -86,8 +86,8 @@ export class TelegramBot {
       `📅 Tanggal: ${new Date().toLocaleDateString('id-ID')}\n` +
       `💰 Budget: Rp ${(report.totalBudget).toLocaleString('id-ID')}\n` +
       `💸 Terpakai: Rp ${(report.spent).toLocaleString('id-ID')}\n` +
-      `剩余: Rp ${(report.remaining).toLocaleString('id-ID')}\n` +
-      `📊 Sisa: ${report.remainingPercentage.toFixed(1)}%\n\n` +
+      `🧾 Sisa: Rp ${(report.remaining).toLocaleString('id-ID')}\n` +
+      `📊 Persentase sisa: ${report.remainingPercentage.toFixed(1)}%\n\n` +
       `📅 Hari tersisa: ${report.daysRemaining}\n` +
       `📈 Rata-rata/hari: Rp ${(report.projectedSpendPerDay).toLocaleString('id-ID')}\n` +
       `☀️ Budget hari ini: Rp ${(report.dailyAllowance).toLocaleString('id-ID')}`;

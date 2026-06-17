@@ -10,9 +10,8 @@ export class GetBudgetProgressUseCase {
 
   async execute(categoryId?: string): Promise<BudgetProgress[]> {
     const budgets = await this.pocketbaseService.getBudgets(categoryId);
-    const transactions = await this.pocketbaseService.getTransactionsByCategories(
-      budgets.map((b) => b.id)
-    );
+    const categoryIds = budgets.map((b) => b.categoryId).filter(Boolean);
+    const transactions = await this.pocketbaseService.getTransactionsByCategories(categoryIds);
 
     return budgets.map((budget) => {
       const relatedTransactions = transactions.filter((t) => t.categoryId === budget.categoryId);

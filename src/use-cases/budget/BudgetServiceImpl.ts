@@ -13,9 +13,10 @@ export class BudgetServiceImpl implements BudgetService {
   private addTransactionUseCase: AddTransactionUseCase;
   private getBudgetProgressUseCase: GetBudgetProgressUseCase;
   private getDailyBudgetReportUseCase: GetDailyBudgetReportUseCase;
+  private actualBudgetService: IActualBudgetService;
 
   constructor() {
-    const actualBudgetService = new ActualBudgetService(
+    this.actualBudgetService = new ActualBudgetService(
       process.env.ACTUAL_SERVER_URL || 'http://localhost:3001',
       process.env.ACTUAL_PASSWORD || '',
       process.env.ACTUAL_SYNC_ID || 'my-budget-sync',
@@ -28,14 +29,20 @@ export class BudgetServiceImpl implements BudgetService {
       process.env.POCKETBASE_TOKEN
     );
 
-    this.addTransactionUseCase = new AddTransactionUseCase(actualBudgetService, pocketbaseService);
-    this.getBudgetProgressUseCase = new GetBudgetProgressUseCase(actualBudgetService, pocketbaseService);
+    this.addTransactionUseCase = new AddTransactionUseCase(this.actualBudgetService, pocketbaseService);
+    this.getBudgetProgressUseCase = new GetBudgetProgressUseCase(this.actualBudgetService, pocketbaseService);
     this.getDailyBudgetReportUseCase = new GetDailyBudgetReportUseCase();
   }
 
   async addTransaction(tx: { title: string; amount: number; date: string; categoryId?: string }): Promise<void> {
-    const accountId = process.env.ACTUAL_DEFAULT_ACCOUNT_ID || 'checking';
-    await this.addTransactionUseCase.execute(accountId, [tx]);
+    await this.actualBudgetService.init();
+    await this.actualBudgetService.downloadBudget();
+    const accounts = await this.actualBudgetService.getAccounts();
+    const account = accounts.find((a) => a.id === process.env.ACTUAL_DEFAULT_ACCOUNT_ID) || accounts[0];
+    if (!account) {
+      throw new Error('No Actual Budget account found');
+    }
+    await this.addTransactionUseCase.execute(account.id, [tx]);
   }
 
   async getBudgetProgress(): Promise<BudgetProgress[]> {
