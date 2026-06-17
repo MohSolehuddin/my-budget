@@ -1,6 +1,7 @@
 import type { TransactionInput, ImportTransactionsResult } from './Transaction';
+import type { Debt, DebtPayment, DebtSummary } from './Debt';
 
-export type { TransactionInput, ImportTransactionsResult };
+export type { TransactionInput, ImportTransactionsResult, Debt, DebtPayment, DebtSummary };
 
 export interface Category {
   id: string;

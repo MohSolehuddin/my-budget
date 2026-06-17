@@ -117,5 +117,43 @@
       { "name": "value", "type": "json" },
       { "name": "updated_at", "type": "date", "auto": true }
     ]
+  },
+  {
+    "name": "debts",
+    "type": "base",
+    "fields": [
+      { "name": "name", "type": "text", "required": true },
+      { "name": "description", "type": "editor" },
+      { "name": "creditor", "type": "text" },
+      { "name": "original_amount", "type": "number", "required": true, "onlyInt": true },
+      { "name": "remaining_amount", "type": "number", "required": true, "onlyInt": true },
+      { "name": "interest_rate", "type": "number" },
+      { "name": "currency", "type": "text", "default": "IDR" },
+      { "name": "type", "type": "select", "required": true, "values": ["paylater", "credit_card", "loan", "installment", "other"] },
+      { "name": "status", "type": "select", "required": true, "values": ["active", "paid_off", "defaulted", "on_hold"], "default": "active" },
+      { "name": "start_date", "type": "date", "required": true },
+      { "name": "due_date", "type": "date" },
+      { "name": "term_months", "type": "number" },
+      { "name": "installment_amount", "type": "number", "onlyInt": true },
+      { "name": "payment_day", "type": "number" },
+      { "name": "auto_debit", "type": "bool", "default": false },
+      { "name": "linked_account", "type": "text" },
+      { "name": "notes", "type": "editor" },
+      { "name": "deleted_at", "type": "date" }
+    ]
+  },
+  {
+    "name": "debt_payments",
+    "type": "base",
+    "fields": [
+      { "name": "debt", "type": "relation", "collectionId": "@debts", "maxSelect": 1, "required": true },
+      { "name": "amount", "type": "number", "required": true, "onlyInt": true },
+      { "name": "payment_date", "type": "date", "required": true },
+      { "name": "payment_method", "type": "select", "values": ["cash", "debit", "credit", "digital_wallet", "transfer"] },
+      { "name": "notes", "type": "editor" },
+      { "name": "is_installment", "type": "bool", "default": false },
+      { "name": "installment_number", "type": "number" },
+      { "name": "deleted_at", "type": "date" }
+    ]
   }
 ]

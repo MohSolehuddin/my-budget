@@ -1,6 +1,15 @@
 import fastify from 'fastify';
 import type { BudgetService } from '../../domain/interfaces/BudgetService';
 import { BudgetServiceImpl } from '../../use-cases/budget/BudgetServiceImpl';
+import { PocketBaseDebtRepository } from '../../infrastructure/database/pocketbase/PocketBaseDebtRepository';
+import { PocketBaseService } from '../../infrastructure/database/pocketbase/PocketBaseService';
+import {
+  CreateDebtUseCase,
+  ListDebtsUseCase,
+  GetDebtSummaryUseCase,
+  PayDebtUseCase,
+  ListDebtPaymentsUseCase,
+} from '../../use-cases/debt/DebtUseCases';
 
 export const createServer = async () => {
   const server = fastify({
@@ -8,6 +17,20 @@ export const createServer = async () => {
       level: process.env.LOG_LEVEL || 'info',
     },
   });
+
+  // Initialize shared PocketBase service
+  const pocketbaseService = new PocketBaseService(
+    process.env.POCKETBASE_URL || 'http://localhost:8091',
+    process.env.POCKETBASE_TOKEN
+  );
+
+  // Initialize debt use cases
+  const debtRepository = new PocketBaseDebtRepository(pocketbaseService);
+  const listDebtsUseCase = new ListDebtsUseCase(debtRepository);
+  const createDebtUseCase = new CreateDebtUseCase(debtRepository);
+  const getDebtSummaryUseCase = new GetDebtSummaryUseCase(debtRepository);
+  const payDebtUseCase = new PayDebtUseCase(debtRepository);
+  const listDebtPaymentsUseCase = new ListDebtPaymentsUseCase(debtRepository);
 
   server.get('/health', async (request, reply) => {
     return { status: 'ok', timestamp: new Date().toISOString() };
@@ -81,6 +104,87 @@ export const createServer = async () => {
     } catch (error) {
       console.error('Error fetching daily report:', error);
       reply.code(500).send({ error: 'Failed to fetch daily report', details: (error as Error).message });
+    }
+  });
+
+  // ===== DEBT ENDPOINTS =====
+
+  // GET /api/debts - List semua hutang
+  server.get('/api/debts', async (request, reply) => {
+    try {
+      const debts = await listDebtsUseCase.execute();
+      reply.code(200).send({ status: 'success', data: debts });
+    } catch (error) {
+      console.error('Error fetching debts:', error);
+      reply.code(500).send({ error: 'Failed to fetch debts', details: (error as Error).message });
+    }
+  });
+
+  // POST /api/debts - Tambah hutang baru
+  server.post<{ Body: { name: string; originalAmount: number; remainingAmount?: number; type: string; creditor?: string; interestRate?: number; termMonths?: number; startDate?: string; dueDate?: string; notes?: string } }>('/api/debts', async (request, reply) => {
+    try {
+      const body = request.body;
+      const debt = await createDebtUseCase.execute({
+        name: body.name,
+        originalAmount: body.originalAmount,
+        remainingAmount: body.remainingAmount ?? body.originalAmount,
+        type: body.type as any,
+        creditor: body.creditor,
+        interestRate: body.interestRate,
+        termMonths: body.termMonths,
+        startDate: body.startDate || new Date().toISOString().split('T')[0],
+        dueDate: body.dueDate,
+        notes: body.notes,
+        status: 'active',
+        currency: 'IDR',
+        autoDebit: false,
+      });
+      reply.code(201).send({ status: 'success', data: debt });
+    } catch (error) {
+      console.error('Error creating debt:', error);
+      reply.code(500).send({ error: 'Failed to create debt', details: (error as Error).message });
+    }
+  });
+
+  // GET /api/debts/summary - Ringkasan hutang
+  server.get('/api/debts/summary', async (request, reply) => {
+    try {
+      const summary = await getDebtSummaryUseCase.execute();
+      reply.code(200).send({ status: 'success', data: summary });
+    } catch (error) {
+      console.error('Error fetching debt summary:', error);
+      reply.code(500).send({ error: 'Failed to fetch debt summary', details: (error as Error).message });
+    }
+  });
+
+  // GET /api/debts/:id/payments - Riwayat pembayaran hutang
+  server.get<{ Params: { id: string } }>('/api/debts/:id/payments', async (request, reply) => {
+    try {
+      const payments = await listDebtPaymentsUseCase.execute(request.params.id);
+      reply.code(200).send({ status: 'success', data: payments });
+    } catch (error) {
+      console.error('Error fetching debt payments:', error);
+      reply.code(500).send({ error: 'Failed to fetch debt payments', details: (error as Error).message });
+    }
+  });
+
+  // POST /api/debts/:id/payments - Bayar hutang
+  server.post<{ Params: { id: string }; Body: { amount: number; paymentDate?: string; paymentMethod?: string; notes?: string; isInstallment?: boolean; installmentNumber?: number } }>('/api/debts/:id/payments', async (request, reply) => {
+    try {
+      const body = request.body;
+      const payment = await payDebtUseCase.execute({
+        debtId: request.params.id,
+        amount: body.amount,
+        paymentDate: body.paymentDate || new Date().toISOString().split('T')[0],
+        paymentMethod: body.paymentMethod,
+        notes: body.notes,
+        isInstallment: body.isInstallment ?? false,
+        installmentNumber: body.installmentNumber,
+      });
+      reply.code(201).send({ status: 'success', data: payment });
+    } catch (error) {
+      console.error('Error paying debt:', error);
+      reply.code(500).send({ error: 'Failed to pay debt', details: (error as Error).message });
     }
   });
 
