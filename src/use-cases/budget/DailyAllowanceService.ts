@@ -1,13 +1,8 @@
-import type { IActualBudgetService } from '../../domain/interfaces/IActualBudgetService';
 import type { TransactionInput } from '../../domain/entities/Transaction';
 import type { BudgetInfo, Category, Account } from '../../domain/entities/index';
 
 export class DailyAllowanceService {
-  private actualBudgetService: IActualBudgetService;
-
-  constructor(actualBudgetService: IActualBudgetService) {
-    this.actualBudgetService = actualBudgetService;
-  }
+  constructor() {}
 
   public calculateDailyAllowance(budgetAmount: number, periodDays: number): number {
     if (periodDays <= 0) {

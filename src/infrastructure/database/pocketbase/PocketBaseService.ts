@@ -70,6 +70,81 @@ export class PocketBaseService {
     }));
   }
 
+  async getTransactions(filters?: { categoryId?: string; startDate?: string; endDate?: string }): Promise<any[]> {
+    const params = new URLSearchParams();
+    params.set('perPage', '500');
+    params.set('expand', 'category,subcategory');
+    params.set('sort', '-date');
+    const filterParts: string[] = [];
+    if (filters?.categoryId) filterParts.push(`category='${filters.categoryId}'`);
+    if (filters?.startDate) filterParts.push(`date>='${filters.startDate}'`);
+    if (filters?.endDate) filterParts.push(`date<='${filters.endDate}'`);
+    if (filterParts.length) params.set('filter', filterParts.join(' && '));
+    const data = await this.request(`/api/collections/transactions/records?${params.toString()}`);
+    return (data.items || []).map((item: any) => ({
+      id: item.id,
+      categoryId: item.category || '',
+      subcategoryId: item.subcategory || '',
+      amount: item.amount || 0,
+      date: item.date,
+      title: item.title,
+      notes: item.notes,
+      source: item.source,
+    }));
+  }
+
+  async updateTransaction(id: string, data: Partial<{ title: string; amount: number; date: string; categoryId: string; notes: string }>): Promise<any> {
+    const body: any = {};
+    if (data.title !== undefined) body.title = data.title;
+    if (data.amount !== undefined) body.amount = data.amount;
+    if (data.date !== undefined) body.date = data.date;
+    if (data.categoryId !== undefined) body.category = data.categoryId;
+    if (data.notes !== undefined) body.notes = data.notes;
+    const result = await this.request(`/api/collections/transactions/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+    return result;
+  }
+
+  async deleteTransaction(id: string): Promise<void> {
+    await this.request(`/api/collections/transactions/records/${id}`, { method: 'DELETE' });
+  }
+
+  async getCategories(): Promise<any[]> {
+    const params = new URLSearchParams();
+    params.set('perPage', '500');
+    const data = await this.request(`/api/collections/budget_categories/records?${params.toString()}`);
+    return (data.items || []).map((item: any) => ({
+      id: item.id,
+      name: item.name,
+      icon: item.icon,
+      color: item.color,
+    }));
+  }
+
+  async createCategory(cat: { name: string; icon?: string; color?: string }): Promise<any> {
+    const data = await this.request('/api/collections/budget_categories/records', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: cat.name,
+        slug: cat.name.toLowerCase().replace(/\s+/g, '-'),
+        icon: cat.icon || '',
+        color: cat.color || '#3b82f6',
+      }),
+    });
+    return data;
+  }
+
+  async updateCategory(id: string, cat: { name?: string; icon?: string; color?: string }): Promise<any> {
+    const body: any = {};
+    if (cat.name !== undefined) { body.name = cat.name; body.slug = cat.name.toLowerCase().replace(/\s+/g, '-'); }
+    if (cat.icon !== undefined) body.icon = cat.icon;
+    if (cat.color !== undefined) body.color = cat.color;
+    return this.request(`/api/collections/budget_categories/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+  }
+
+  async deleteCategory(id: string): Promise<void> {
+    await this.request(`/api/collections/budget_categories/records/${id}`, { method: 'DELETE' });
+  }
+
   async saveTransactionsToPB(transactions: any[]): Promise<void> {
     const categoryNames = [...new Set(transactions.map((tx) => tx.categoryId).filter(Boolean))];
     const categoryMap: Record<string, string> = {};
@@ -99,8 +174,8 @@ export class PocketBaseService {
     console.log(`[PB] Saved ${transactions.length} transaction(s) to PocketBase`);
   }
 
-  async saveBudgetToPB(budget: any): Promise<void> {
-    await this.request('/api/collections/budgets/records', {
+  async saveBudgetToPB(budget: any): Promise<any> {
+    const data = await this.request('/api/collections/budgets/records', {
       method: 'POST',
       body: JSON.stringify({
         category: budget.categoryId || null,
@@ -110,6 +185,22 @@ export class PocketBaseService {
         period_end: budget.periodEnd,
       }),
     });
+    return data;
+  }
+
+  async updateBudget(id: string, budget: Partial<{ categoryId: string; subcategoryId: string; amount: number; periodStart: string; periodEnd: string }>): Promise<any> {
+    const body: any = {};
+    if (budget.categoryId !== undefined) body.category = budget.categoryId;
+    if (budget.subcategoryId !== undefined) body.subcategory = budget.subcategoryId;
+    if (budget.amount !== undefined) body.amount = budget.amount;
+    if (budget.periodStart !== undefined) body.period_start = budget.periodStart;
+    if (budget.periodEnd !== undefined) body.period_end = budget.periodEnd;
+    const data = await this.request(`/api/collections/budgets/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+    return data;
+  }
+
+  async deleteBudget(id: string): Promise<void> {
+    await this.request(`/api/collections/budgets/records/${id}`, { method: 'DELETE' });
   }
 
   // ===== DEBTS =====
@@ -141,7 +232,6 @@ export class PocketBaseService {
   async getDebts(): Promise<any[]> {
     const params = new URLSearchParams();
     params.set('perPage', '500');
-    params.set('filter', "deleted_at=''");
     const data = await this.request(`/api/collections/debts/records?${params.toString()}`);
     return (data.items || []).map((item: any) => this.toDebt(item));
   }
@@ -225,9 +315,8 @@ export class PocketBaseService {
   async getDebtPayments(debtId?: string): Promise<any[]> {
     const params = new URLSearchParams();
     params.set('perPage', '500');
-    params.set('filter', "deleted_at=''");
     if (debtId) {
-      params.set('filter', `debt='${debtId}' && deleted_at=''`);
+      params.set('filter', `debt='${debtId}'`);
     }
     const data = await this.request(`/api/collections/debt_payments/records?${params.toString()}`);
     return (data.items || []).map((item: any) => this.toPayment(item));
@@ -260,5 +349,71 @@ export class PocketBaseService {
 
   async deleteDebtPayment(id: string): Promise<void> {
     await this.request(`/api/collections/debt_payments/records/${id}`, { method: 'DELETE' });
+  }
+
+  async updateDebtPayment(id: string, payment: { amount?: number; paymentDate?: string; paymentMethod?: string; notes?: string }): Promise<any> {
+    const body: any = {};
+    if (payment.amount !== undefined) body.amount = payment.amount;
+    if (payment.paymentDate !== undefined) body.payment_date = payment.paymentDate;
+    if (payment.paymentMethod !== undefined) body.payment_method = payment.paymentMethod;
+    if (payment.notes !== undefined) body.notes = payment.notes;
+    return this.request(`/api/collections/debt_payments/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+  }
+
+  // ===== POCKETS =====
+
+  async getPockets(): Promise<any[]> {
+    const params = new URLSearchParams();
+    params.set('perPage', '500');
+    const data = await this.request(`/api/collections/pockets/records?${params.toString()}`);
+    return (data.items || []).map((item: any) => ({
+      id: item.id,
+      name: item.name,
+      balance: item.balance || 0,
+      icon: item.icon,
+      color: item.color,
+      type: item.type,
+      notes: item.notes,
+      isArchived: item.is_archived ?? false,
+    }));
+  }
+
+  async createPocket(pocket: { name: string; balance: number; icon?: string; color?: string; type?: string; notes?: string }): Promise<any> {
+    const body: any = {
+      name: pocket.name,
+      balance: pocket.balance || 0,
+      icon: pocket.icon || '',
+      color: pocket.color || '#3b82f6',
+      type: pocket.type || 'cash',
+      notes: pocket.notes || '',
+      is_archived: false,
+    };
+    const data = await this.request('/api/collections/pockets/records', { method: 'POST', body: JSON.stringify(body) });
+    return data;
+  }
+
+  async updatePocket(id: string, pocket: Partial<{ name: string; balance: number; icon: string; color: string; type: string; notes: string; isArchived: boolean }>): Promise<any> {
+    const body: any = {};
+    if (pocket.name !== undefined) body.name = pocket.name;
+    if (pocket.balance !== undefined) body.balance = pocket.balance;
+    if (pocket.icon !== undefined) body.icon = pocket.icon;
+    if (pocket.color !== undefined) body.color = pocket.color;
+    if (pocket.type !== undefined) body.type = pocket.type;
+    if (pocket.notes !== undefined) body.notes = pocket.notes;
+    if (pocket.isArchived !== undefined) body.is_archived = pocket.isArchived;
+    return this.request(`/api/collections/pockets/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+  }
+
+  async deletePocket(id: string): Promise<void> {
+    await this.request(`/api/collections/pockets/records/${id}`, { method: 'DELETE' });
+  }
+
+  async transferBetweenPockets(fromId: string, toId: string, amount: number): Promise<void> {
+    const from = (await this.getPockets()).find(p => p.id === fromId);
+    const to = (await this.getPockets()).find(p => p.id === toId);
+    if (!from || !to) throw new Error('Pocket not found');
+    if (from.balance < amount) throw new Error('Insufficient balance');
+    await this.updatePocket(fromId, { balance: from.balance - amount });
+    await this.updatePocket(toId, { balance: to.balance + amount });
   }
 }

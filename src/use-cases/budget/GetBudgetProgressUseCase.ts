@@ -1,10 +1,7 @@
-import type { IActualBudgetService } from '../../domain/interfaces/IActualBudgetService';
-import type { BudgetInfo } from '../../domain/entities/index';
 import type { PocketBaseService } from '../../infrastructure/database/pocketbase/PocketBaseService';
 
 export class GetBudgetProgressUseCase {
   constructor(
-    private actualBudgetService: IActualBudgetService,
     private pocketbaseService: PocketBaseService
   ) {}
 
