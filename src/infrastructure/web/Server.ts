@@ -360,12 +360,15 @@ export const createServer = async () => {
   });
 
   // POST /api/transactions
-  server.post<{ Body: { description?: string; title?: string; amount: number; date: string; category?: string; categoryId?: string; pocket?: string; type?: string; notes?: string } }>(
+  server.post<{ Body: { description?: string; title?: string; amount: number; date: string; category?: string; categoryId?: string; pocket?: string; pocketId?: string; type?: string; notes?: string } }>(
     '/api/transactions',
     async (request, reply) => {
       try {
         const body = request.body;
-        const token = request.cookies?.token || (request.headers.authorization || '').replace('Bearer ', '');
+        const token = getUserToken(request);
+        if (!token) {
+          return reply.code(401).send({ error: 'Unauthorized' });
+        }
         console.log('[POST /api/transactions] token length:', token.length, 'first 20:', token.substring(0, 20));
         const decoded = decodeJWT(token);
         console.log('[POST /api/transactions] decoded:', JSON.stringify(decoded));
@@ -383,9 +386,9 @@ export const createServer = async () => {
           categoryId = catData.items?.[0]?.id || null;
         }
 
-        // Resolve pocket name → ID
-        let pocketId = null;
-        if (body.pocket) {
+        // Resolve pocket: accept pocketId directly, or resolve pocket name → ID
+        let pocketId = body.pocketId || null;
+        if (!pocketId && body.pocket) {
           const params = new URLSearchParams({ filter: `name='${body.pocket}'`, perPage: '1' });
           const pocketData = await pocketbaseService.request(`/api/collections/pockets/records?${params.toString()}`);
           pocketId = pocketData.items?.[0]?.id || null;
@@ -393,13 +396,14 @@ export const createServer = async () => {
 
         const record: any = {
           user: userId,
+          title: body.title || body.description || '',
           description: body.description || body.title || '',
           amount: body.type === 'income' ? Math.abs(body.amount) : -Math.abs(body.amount),
           type: body.type || (body.amount >= 0 ? 'income' : 'expense'),
           date: body.date || new Date().toISOString().split('T')[0],
           category: categoryId,
           pocket: pocketId,
-          source: 'web',
+          source: 'manual',
         };
 
         await pocketbaseService.request('/api/collections/transactions/records', {
@@ -707,17 +711,24 @@ export const createServer = async () => {
   });
 
   // POST /api/savings-targets
-  server.post<{ Body: { title: string; targetAmount: number; currentAmount?: number; pocketId?: string; targetDate?: string; status?: string; icon?: string; color?: string; notes?: string } }>(
+  server.post<{ Body: { title: string; targetAmount: number; currentAmount?: number; pocketId?: string; targetDate?: string; status?: string; icon?: string; color?: string; notes?: string; targetType?: string } }>(
     '/api/savings-targets',
     async (request, reply) => {
       try {
-        const token = request.cookies?.token || (request.headers.authorization || '').replace('Bearer ', '');
+        const token = getUserToken(request);
+        if (!token) {
+          return reply.code(401).send({ error: 'Unauthorized' });
+        }
         const decoded = decodeJWT(token);
         const userId = decoded?.id;
+        if (!userId) {
+          return reply.code(401).send({ error: 'Unauthorized' });
+        }
         const result = await pocketbaseService.createSavingsTarget({
           ...request.body,
           userId,
         });
+        if (!result) return reply.code(500).send({ error: 'Failed to create savings target' });
         reply.code(201).send({ status: 'success', data: result });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to create savings target', details: (error as Error).message });
@@ -726,7 +737,7 @@ export const createServer = async () => {
   );
 
   // PUT /api/savings-targets/:id
-  server.put<{ Params: { id: string }; Body: { title?: string; targetAmount?: number; currentAmount?: number; pocketId?: string; targetDate?: string; status?: string; icon?: string; color?: string; notes?: string } }>(
+  server.put<{ Params: { id: string }; Body: { title?: string; targetAmount?: number; currentAmount?: number; pocketId?: string; targetDate?: string; status?: string; icon?: string; color?: string; notes?: string; targetType?: string } }>(
     '/api/savings-targets/:id',
     async (request, reply) => {
       try {
@@ -769,13 +780,20 @@ export const createServer = async () => {
     '/api/recurring-transactions',
     async (request, reply) => {
       try {
-        const token = request.cookies?.token || (request.headers.authorization || '').replace('Bearer ', '');
+        const token = getUserToken(request);
+        if (!token) {
+          return reply.code(401).send({ error: 'Unauthorized' });
+        }
         const decoded = decodeJWT(token);
         const userId = decoded?.id;
+        if (!userId) {
+          return reply.code(401).send({ error: 'Unauthorized' });
+        }
         const result = await pocketbaseService.createRecurringTransaction({
           ...request.body,
           userId,
         });
+        if (!result) return reply.code(500).send({ error: 'Failed to create recurring transaction' });
         reply.code(201).send({ status: 'success', data: result });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to create recurring transaction', details: (error as Error).message });
@@ -816,6 +834,81 @@ export const createServer = async () => {
     }
   });
 
+  // ===== RECURRING BUDGETS =====
+
+  // GET /api/recurring-budgets
+  server.get('/api/recurring-budgets', async (request, reply) => {
+    try {
+      const query = request.query as any;
+      const recurring = await pocketbaseService.getRecurringBudgets({
+        pocketId: query.pocketId,
+        isActive: query.isActive === undefined ? undefined : query.isActive === 'true',
+      });
+      reply.send({ status: 'success', data: recurring });
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to fetch recurring budgets', details: (error as Error).message });
+    }
+  });
+
+  // POST /api/recurring-budgets
+  server.post<{ Body: { title: string; amount: number; categoryId?: string; pocketId?: string; dayOfMonth: number; frequency?: string; startDate?: string; endDate?: string; isActive?: boolean; notes?: string } }>(
+    '/api/recurring-budgets',
+    async (request, reply) => {
+      try {
+        const token = getUserToken(request);
+        if (!token) {
+          return reply.code(401).send({ error: 'Unauthorized' });
+        }
+        const decoded = decodeJWT(token);
+        const userId = decoded?.id;
+        if (!userId) {
+          return reply.code(401).send({ error: 'Unauthorized' });
+        }
+        const result = await pocketbaseService.createRecurringBudget({
+          ...request.body,
+          userId,
+        });
+        if (!result) return reply.code(500).send({ error: 'Failed to create recurring budget' });
+        reply.code(201).send({ status: 'success', data: result });
+      } catch (error) {
+        reply.code(500).send({ error: 'Failed to create recurring budget', details: (error as Error).message });
+      }
+    }
+  );
+
+  // PUT /api/recurring-budgets/:id
+  server.put<{ Params: { id: string }; Body: { title?: string; amount?: number; categoryId?: string; pocketId?: string; dayOfMonth?: number; frequency?: string; startDate?: string; endDate?: string; isActive?: boolean; notes?: string } }>(
+    '/api/recurring-budgets/:id',
+    async (request, reply) => {
+      try {
+        await pocketbaseService.updateRecurringBudget(request.params.id, request.body);
+        reply.send({ status: 'success', message: 'Recurring budget updated' });
+      } catch (error) {
+        reply.code(500).send({ error: 'Failed to update recurring budget', details: (error as Error).message });
+      }
+    }
+  );
+
+  // DELETE /api/recurring-budgets/:id
+  server.delete<{ Params: { id: string } }>('/api/recurring-budgets/:id', async (request, reply) => {
+    try {
+      await pocketbaseService.deleteRecurringBudget(request.params.id);
+      reply.send({ status: 'success', message: 'Recurring budget deleted' });
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to delete recurring budget', details: (error as Error).message });
+    }
+  });
+
+  // POST /api/recurring-budgets/generate — auto-generate due recurring budgets
+  server.post('/api/recurring-budgets/generate', async (_request, reply) => {
+    try {
+      const result = await pocketbaseService.generateRecurringBudgets();
+      reply.send({ status: 'success', data: result });
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to generate recurring budgets', details: (error as Error).message });
+    }
+  });
+
   // ===== AI SUMMARIES =====
 
   // GET /api/ai-summaries
@@ -840,13 +933,20 @@ export const createServer = async () => {
     '/api/ai-summaries',
     async (request, reply) => {
       try {
-        const token = request.cookies?.token || (request.headers.authorization || '').replace('Bearer ', '');
+        const token = getUserToken(request);
+        if (!token) {
+          return reply.code(401).send({ error: 'Unauthorized' });
+        }
         const decoded = decodeJWT(token);
         const userId = decoded?.id;
+        if (!userId) {
+          return reply.code(401).send({ error: 'Unauthorized' });
+        }
         const result = await pocketbaseService.createAISummary({
           ...request.body,
           userId,
         });
+        if (!result) return reply.code(500).send({ error: 'Failed to create AI summary' });
         reply.code(201).send({ status: 'success', data: result });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to create AI summary', details: (error as Error).message });
@@ -886,13 +986,20 @@ export const createServer = async () => {
     '/api/predictions',
     async (request, reply) => {
       try {
-        const token = request.cookies?.token || (request.headers.authorization || '').replace('Bearer ', '');
+        const token = getUserToken(request);
+        if (!token) {
+          return reply.code(401).send({ error: 'Unauthorized' });
+        }
         const decoded = decodeJWT(token);
         const userId = decoded?.id;
+        if (!userId) {
+          return reply.code(401).send({ error: 'Unauthorized' });
+        }
         const result = await pocketbaseService.createPrediction({
           ...request.body,
           userId,
         });
+        if (!result) return reply.code(500).send({ error: 'Failed to create prediction' });
         reply.code(201).send({ status: 'success', data: result });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to create prediction', details: (error as Error).message });

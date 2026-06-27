@@ -503,6 +503,7 @@ export class PocketBaseService {
       color: item.color || '#3b82f6',
       notes: item.notes || '',
       userId: item.user || '',
+      targetType: item.target_type || 'pocket',
       created: item.created || '',
       updated: item.updated || '',
     };
@@ -524,54 +525,42 @@ export class PocketBaseService {
     }
   }
 
-  async createSavingsTarget(target: { title: string; targetAmount: number; currentAmount?: number; pocketId?: string; targetDate?: string; status?: string; icon?: string; color?: string; notes?: string; userId?: string }): Promise<any> {
-    try {
-      const body: any = {
-        title: target.title,
-        target_amount: target.targetAmount,
-        current_amount: target.currentAmount || 0,
-        status: target.status || 'active',
-        icon: target.icon || '',
-        color: target.color || '#3b82f6',
-        notes: target.notes || '',
-      };
-      if (target.pocketId) body.pocket = target.pocketId;
-      if (target.targetDate) body.target_date = target.targetDate;
-      if (target.userId) body.user = target.userId;
-      const data = await this.request('/api/collections/savings_targets/records', { method: 'POST', body: JSON.stringify(body) });
-      return this.toSavingsTarget(data);
-    } catch (e) {
-      console.error('[PB] createSavingsTarget failed:', e);
-      return null;
-    }
+  async createSavingsTarget(target: { title: string; targetAmount: number; currentAmount?: number; pocketId?: string; targetDate?: string; status?: string; icon?: string; color?: string; notes?: string; userId?: string; targetType?: string }): Promise<any> {
+    const body: any = {
+      title: target.title,
+      target_amount: target.targetAmount,
+      current_amount: target.currentAmount || 0,
+      status: target.status || 'active',
+      icon: target.icon || '',
+      color: target.color || '#3b82f6',
+      notes: target.notes || '',
+    };
+    if (target.pocketId) body.pocket = target.pocketId;
+    if (target.targetDate) body.target_date = target.targetDate;
+    if (target.userId) body.user = target.userId;
+    if (target.targetType) body.target_type = target.targetType;
+    const data = await this.request('/api/collections/savings_targets/records', { method: 'POST', body: JSON.stringify(body) });
+    return this.toSavingsTarget(data);
   }
 
-  async updateSavingsTarget(id: string, target: Partial<{ title: string; targetAmount: number; currentAmount: number; pocketId: string; targetDate: string; status: string; icon: string; color: string; notes: string }>): Promise<any> {
-    try {
-      const body: any = {};
-      if (target.title !== undefined) body.title = target.title;
-      if (target.targetAmount !== undefined) body.target_amount = target.targetAmount;
-      if (target.currentAmount !== undefined) body.current_amount = target.currentAmount;
-      if (target.pocketId !== undefined) body.pocket = target.pocketId;
-      if (target.targetDate !== undefined) body.target_date = target.targetDate;
-      if (target.status !== undefined) body.status = target.status;
-      if (target.icon !== undefined) body.icon = target.icon;
-      if (target.color !== undefined) body.color = target.color;
-      if (target.notes !== undefined) body.notes = target.notes;
-      const data = await this.request(`/api/collections/savings_targets/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
-      return this.toSavingsTarget(data);
-    } catch (e) {
-      console.error('[PB] updateSavingsTarget failed:', e);
-      return null;
-    }
+  async updateSavingsTarget(id: string, target: Partial<{ title: string; targetAmount: number; currentAmount: number; pocketId: string; targetDate: string; status: string; icon: string; color: string; notes: string; targetType: string }>): Promise<any> {
+    const body: any = {};
+    if (target.title !== undefined) body.title = target.title;
+    if (target.targetAmount !== undefined) body.target_amount = target.targetAmount;
+    if (target.currentAmount !== undefined) body.current_amount = target.currentAmount;
+    if (target.pocketId !== undefined) body.pocket = target.pocketId;
+    if (target.targetDate !== undefined) body.target_date = target.targetDate;
+    if (target.status !== undefined) body.status = target.status;
+    if (target.icon !== undefined) body.icon = target.icon;
+    if (target.color !== undefined) body.color = target.color;
+    if (target.notes !== undefined) body.notes = target.notes;
+    if (target.targetType !== undefined) body.target_type = target.targetType;
+    const data = await this.request(`/api/collections/savings_targets/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+    return this.toSavingsTarget(data);
   }
 
   async deleteSavingsTarget(id: string): Promise<void> {
-    try {
-      await this.request(`/api/collections/savings_targets/records/${id}`, { method: 'DELETE' });
-    } catch (e) {
-      console.error('[PB] deleteSavingsTarget failed:', e);
-    }
+    await this.request(`/api/collections/savings_targets/records/${id}`, { method: 'DELETE' });
   }
 
   // ===== RECURRING TRANSACTIONS =====
@@ -618,57 +607,43 @@ export class PocketBaseService {
   }
 
   async createRecurringTransaction(rt: { title: string; amount: number; type: string; categoryId?: string; pocketId?: string; dayOfMonth: number; frequency?: string; startDate?: string; endDate?: string; isActive?: boolean; notes?: string; userId?: string }): Promise<any> {
-    try {
-      const body: any = {
-        title: rt.title,
-        amount: rt.amount,
-        type: rt.type,
-        day_of_month: rt.dayOfMonth,
-        frequency: rt.frequency || 'monthly',
-        is_active: rt.isActive ?? true,
-        notes: rt.notes || '',
-      };
-      if (rt.categoryId) body.category = rt.categoryId;
-      if (rt.pocketId) body.pocket = rt.pocketId;
-      if (rt.startDate) body.start_date = rt.startDate;
-      if (rt.endDate) body.end_date = rt.endDate;
-      if (rt.userId) body.user = rt.userId;
-      const data = await this.request('/api/collections/recurring_transactions/records', { method: 'POST', body: JSON.stringify(body) });
-      return this.toRecurringTransaction(data);
-    } catch (e) {
-      console.error('[PB] createRecurringTransaction failed:', e);
-      return null;
-    }
+    const body: any = {
+      title: rt.title,
+      amount: rt.amount,
+      type: rt.type,
+      day_of_month: rt.dayOfMonth,
+      frequency: rt.frequency || 'monthly',
+      is_active: rt.isActive ?? true,
+      notes: rt.notes || '',
+    };
+    if (rt.categoryId) body.category = rt.categoryId;
+    if (rt.pocketId) body.pocket = rt.pocketId;
+    body.start_date = rt.startDate || new Date().toISOString().split('T')[0];
+    if (rt.endDate) body.end_date = rt.endDate;
+    if (rt.userId) body.user = rt.userId;
+    const data = await this.request('/api/collections/recurring_transactions/records', { method: 'POST', body: JSON.stringify(body) });
+    return this.toRecurringTransaction(data);
   }
 
   async updateRecurringTransaction(id: string, rt: Partial<{ title: string; amount: number; type: string; categoryId: string; pocketId: string; dayOfMonth: number; frequency: string; startDate: string; endDate: string; isActive: boolean; notes: string }>): Promise<any> {
-    try {
-      const body: any = {};
-      if (rt.title !== undefined) body.title = rt.title;
-      if (rt.amount !== undefined) body.amount = rt.amount;
-      if (rt.type !== undefined) body.type = rt.type;
-      if (rt.categoryId !== undefined) body.category = rt.categoryId;
-      if (rt.pocketId !== undefined) body.pocket = rt.pocketId;
-      if (rt.dayOfMonth !== undefined) body.day_of_month = rt.dayOfMonth;
-      if (rt.frequency !== undefined) body.frequency = rt.frequency;
-      if (rt.startDate !== undefined) body.start_date = rt.startDate;
-      if (rt.endDate !== undefined) body.end_date = rt.endDate;
-      if (rt.isActive !== undefined) body.is_active = rt.isActive;
-      if (rt.notes !== undefined) body.notes = rt.notes;
-      const data = await this.request(`/api/collections/recurring_transactions/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
-      return this.toRecurringTransaction(data);
-    } catch (e) {
-      console.error('[PB] updateRecurringTransaction failed:', e);
-      return null;
-    }
+    const body: any = {};
+    if (rt.title !== undefined) body.title = rt.title;
+    if (rt.amount !== undefined) body.amount = rt.amount;
+    if (rt.type !== undefined) body.type = rt.type;
+    if (rt.categoryId !== undefined) body.category = rt.categoryId;
+    if (rt.pocketId !== undefined) body.pocket = rt.pocketId;
+    if (rt.dayOfMonth !== undefined) body.day_of_month = rt.dayOfMonth;
+    if (rt.frequency !== undefined) body.frequency = rt.frequency;
+    if (rt.startDate !== undefined) body.start_date = rt.startDate;
+    if (rt.endDate !== undefined) body.end_date = rt.endDate;
+    if (rt.isActive !== undefined) body.is_active = rt.isActive;
+    if (rt.notes !== undefined) body.notes = rt.notes;
+    const data = await this.request(`/api/collections/recurring_transactions/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+    return this.toRecurringTransaction(data);
   }
 
   async deleteRecurringTransaction(id: string): Promise<void> {
-    try {
-      await this.request(`/api/collections/recurring_transactions/records/${id}`, { method: 'DELETE' });
-    } catch (e) {
-      console.error('[PB] deleteRecurringTransaction failed:', e);
-    }
+    await this.request(`/api/collections/recurring_transactions/records/${id}`, { method: 'DELETE' });
   }
 
   /**
@@ -736,6 +711,151 @@ export class PocketBaseService {
     return result;
   }
 
+  // ===== RECURRING BUDGETS =====
+
+  private toRecurringBudget(item: any): any {
+    const category = item.expand?.category;
+    const pocket = item.expand?.pocket;
+    return {
+      id: item.id,
+      title: item.title || '',
+      amount: item.amount || 0,
+      categoryId: item.category || '',
+      categoryName: category?.name || '',
+      pocketId: item.pocket || '',
+      pocketName: pocket?.name || '',
+      dayOfMonth: item.day_of_month || 1,
+      frequency: item.frequency || 'monthly',
+      startDate: item.start_date || '',
+      endDate: item.end_date || '',
+      isActive: item.is_active ?? true,
+      lastGenerated: item.last_generated || '',
+      notes: item.notes || '',
+      userId: item.user || '',
+      created: item.created || '',
+      updated: item.updated || '',
+    };
+  }
+
+  async getRecurringBudgets(filters?: { pocketId?: string; isActive?: boolean }): Promise<any[]> {
+    try {
+      const params = new URLSearchParams();
+      params.set('perPage', '500');
+      params.set('expand', 'category,pocket');
+      const filterParts: string[] = [];
+      if (filters?.pocketId) filterParts.push(`pocket='${filters.pocketId}'`);
+      if (filters?.isActive !== undefined) filterParts.push(`is_active=${filters.isActive}`);
+      if (filterParts.length) params.set('filter', filterParts.join(' && '));
+      const data = await this.request(`/api/collections/recurring_budgets/records?${params.toString()}`);
+      return (data.items || []).map((item: any) => this.toRecurringBudget(item));
+    } catch {
+      return [];
+    }
+  }
+
+  async createRecurringBudget(rb: { title: string; amount: number; categoryId?: string; pocketId?: string; dayOfMonth: number; frequency?: string; startDate?: string; endDate?: string; isActive?: boolean; notes?: string; userId?: string }): Promise<any> {
+    const body: any = {
+      title: rb.title,
+      amount: rb.amount,
+      day_of_month: rb.dayOfMonth,
+      frequency: rb.frequency || 'monthly',
+      is_active: rb.isActive ?? true,
+      notes: rb.notes || '',
+    };
+    if (rb.categoryId) body.category = rb.categoryId;
+    if (rb.pocketId) body.pocket = rb.pocketId;
+    if (rb.startDate) body.start_date = rb.startDate;
+    if (rb.endDate) body.end_date = rb.endDate;
+    if (rb.userId) body.user = rb.userId;
+    const data = await this.request('/api/collections/recurring_budgets/records', { method: 'POST', body: JSON.stringify(body) });
+    return this.toRecurringBudget(data);
+  }
+
+  async updateRecurringBudget(id: string, rb: Partial<{ title: string; amount: number; categoryId: string; pocketId: string; dayOfMonth: number; frequency: string; startDate: string; endDate: string; isActive: boolean; notes: string }>): Promise<any> {
+    const body: any = {};
+    if (rb.title !== undefined) body.title = rb.title;
+    if (rb.amount !== undefined) body.amount = rb.amount;
+    if (rb.categoryId !== undefined) body.category = rb.categoryId;
+    if (rb.pocketId !== undefined) body.pocket = rb.pocketId;
+    if (rb.dayOfMonth !== undefined) body.day_of_month = rb.dayOfMonth;
+    if (rb.frequency !== undefined) body.frequency = rb.frequency;
+    if (rb.startDate !== undefined) body.start_date = rb.startDate;
+    if (rb.endDate !== undefined) body.end_date = rb.endDate;
+    if (rb.isActive !== undefined) body.is_active = rb.isActive;
+    if (rb.notes !== undefined) body.notes = rb.notes;
+    const data = await this.request(`/api/collections/recurring_budgets/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+    return this.toRecurringBudget(data);
+  }
+
+  async deleteRecurringBudget(id: string): Promise<void> {
+    await this.request(`/api/collections/recurring_budgets/records/${id}`, { method: 'DELETE' });
+  }
+
+  /**
+   * Auto-generate budgets for active recurring_budgets whose day_of_month
+   * has passed in the current month and last_generated < current month.
+   * For each due recurring_budget, creates a new budget record in `budgets`
+   * collection and updates last_generated.
+   */
+  async generateRecurringBudgets(): Promise<{ generated: number; errors: number }> {
+    const result = { generated: 0, errors: 0 };
+    try {
+      const recurring = await this.getRecurringBudgets({ isActive: true });
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth(); // 0-indexed
+      const today = now.getDate();
+      const currentMonthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+
+      for (const rb of recurring) {
+        try {
+          // Check end_date
+          if (rb.endDate && new Date(rb.endDate) < now) continue;
+
+          // Check start_date
+          if (rb.startDate && new Date(rb.startDate) > now) continue;
+
+          // Check if already generated this month
+          if (rb.lastGenerated && rb.lastGenerated.startsWith(currentMonthStr)) continue;
+
+          // Check if day_of_month has passed
+          const dom = rb.dayOfMonth || 1;
+          if (today < dom) continue;
+
+          // Create budget record
+          const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(Math.min(dom, 28)).padStart(2, '0')}`;
+          const periodStart = dateStr;
+          const periodEnd = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${new Date(currentYear, currentMonth + 1, 0).getDate().toString().padStart(2, '0')}`;
+          const budgetBody: any = {
+            amount: rb.amount,
+            period_start: periodStart,
+            period_end: periodEnd,
+          };
+          if (rb.categoryId) budgetBody.category = rb.categoryId;
+
+          await this.request('/api/collections/budgets/records', {
+            method: 'POST',
+            body: JSON.stringify(budgetBody),
+          });
+
+          // Update last_generated
+          await this.request(`/api/collections/recurring_budgets/records/${rb.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ last_generated: dateStr }),
+          });
+
+          result.generated++;
+        } catch (e) {
+          console.error(`[PB] generateRecurringBudgets: failed for ${rb.id}:`, e);
+          result.errors++;
+        }
+      }
+    } catch (e) {
+      console.error('[PB] generateRecurringBudgets failed:', e);
+    }
+    return result;
+  }
+
   // ===== AI SUMMARIES =====
 
   private toAISummary(item: any): any {
@@ -778,33 +898,24 @@ export class PocketBaseService {
   }
 
   async createAISummary(summary: { summaryText: string; summaryDate: string; period?: string; totalIncome?: number; totalExpense?: number; net?: number; topCategories?: any[]; insights?: string; recommendations?: string; userId?: string }): Promise<any> {
-    try {
-      const body: any = {
-        summary_text: summary.summaryText,
-        summary_date: summary.summaryDate,
-        period: summary.period || 'monthly',
-        total_income: summary.totalIncome || 0,
-        total_expense: summary.totalExpense || 0,
-        net: summary.net || 0,
-        top_categories: JSON.stringify(summary.topCategories || []),
-        insights: summary.insights || '',
-        recommendations: summary.recommendations || '',
-      };
-      if (summary.userId) body.user = summary.userId;
-      const data = await this.request('/api/collections/ai_summaries/records', { method: 'POST', body: JSON.stringify(body) });
-      return this.toAISummary(data);
-    } catch (e) {
-      console.error('[PB] createAISummary failed:', e);
-      return null;
-    }
+    const body: any = {
+      summary_text: summary.summaryText,
+      summary_date: summary.summaryDate,
+      period: summary.period || 'monthly',
+      total_income: summary.totalIncome || 0,
+      total_expense: summary.totalExpense || 0,
+      net: summary.net || 0,
+      top_categories: JSON.stringify(summary.topCategories || []),
+      insights: summary.insights || '',
+      recommendations: summary.recommendations || '',
+    };
+    if (summary.userId) body.user = summary.userId;
+    const data = await this.request('/api/collections/ai_summaries/records', { method: 'POST', body: JSON.stringify(body) });
+    return this.toAISummary(data);
   }
 
   async deleteAISummary(id: string): Promise<void> {
-    try {
-      await this.request(`/api/collections/ai_summaries/records/${id}`, { method: 'DELETE' });
-    } catch (e) {
-      console.error('[PB] deleteAISummary failed:', e);
-    }
+    await this.request(`/api/collections/ai_summaries/records/${id}`, { method: 'DELETE' });
   }
 
   // ===== PREDICTIONS =====
@@ -853,52 +964,38 @@ export class PocketBaseService {
   }
 
   async createPrediction(pred: { type: string; predictedAmount: number; targetMonth?: string; targetDate?: string; confidence?: number; basedOn?: any[]; isAuto?: boolean; isEditable?: boolean; details?: any; userId?: string }): Promise<any> {
-    try {
-      const body: any = {
-        type: pred.type,
-        predicted_amount: pred.predictedAmount,
-        confidence: pred.confidence ?? 0,
-        is_auto: pred.isAuto ?? false,
-        is_editable: pred.isEditable ?? true,
-        based_on: JSON.stringify(pred.basedOn || []),
-        details: JSON.stringify(pred.details || {}),
-      };
-      if (pred.targetMonth) body.target_month = pred.targetMonth;
-      if (pred.targetDate) body.target_date = pred.targetDate;
-      if (pred.userId) body.user = pred.userId;
-      const data = await this.request('/api/collections/predictions/records', { method: 'POST', body: JSON.stringify(body) });
-      return this.toPrediction(data);
-    } catch (e) {
-      console.error('[PB] createPrediction failed:', e);
-      return null;
-    }
+    const body: any = {
+      type: pred.type,
+      predicted_amount: pred.predictedAmount,
+      confidence: pred.confidence ?? 0,
+      is_auto: pred.isAuto ?? false,
+      is_editable: pred.isEditable ?? true,
+      based_on: JSON.stringify(pred.basedOn || []),
+      details: JSON.stringify(pred.details || {}),
+    };
+    if (pred.targetMonth) body.target_month = pred.targetMonth;
+    if (pred.targetDate) body.target_date = pred.targetDate;
+    if (pred.userId) body.user = pred.userId;
+    const data = await this.request('/api/collections/predictions/records', { method: 'POST', body: JSON.stringify(body) });
+    return this.toPrediction(data);
   }
 
   async updatePrediction(id: string, pred: Partial<{ type: string; predictedAmount: number; targetMonth: string; targetDate: string; confidence: number; isAuto: boolean; isEditable: boolean; details: any }>): Promise<any> {
-    try {
-      const body: any = {};
-      if (pred.type !== undefined) body.type = pred.type;
-      if (pred.predictedAmount !== undefined) body.predicted_amount = pred.predictedAmount;
-      if (pred.targetMonth !== undefined) body.target_month = pred.targetMonth;
-      if (pred.targetDate !== undefined) body.target_date = pred.targetDate;
-      if (pred.confidence !== undefined) body.confidence = pred.confidence;
-      if (pred.isAuto !== undefined) body.is_auto = pred.isAuto;
-      if (pred.isEditable !== undefined) body.is_editable = pred.isEditable;
-      if (pred.details !== undefined) body.details = JSON.stringify(pred.details);
-      const data = await this.request(`/api/collections/predictions/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
-      return this.toPrediction(data);
-    } catch (e) {
-      console.error('[PB] updatePrediction failed:', e);
-      return null;
-    }
+    const body: any = {};
+    if (pred.type !== undefined) body.type = pred.type;
+    if (pred.predictedAmount !== undefined) body.predicted_amount = pred.predictedAmount;
+    if (pred.targetMonth !== undefined) body.target_month = pred.targetMonth;
+    if (pred.targetDate !== undefined) body.target_date = pred.targetDate;
+    if (pred.confidence !== undefined) body.confidence = pred.confidence;
+    if (pred.isAuto !== undefined) body.is_auto = pred.isAuto;
+    if (pred.isEditable !== undefined) body.is_editable = pred.isEditable;
+    if (pred.details !== undefined) body.details = JSON.stringify(pred.details);
+    const data = await this.request(`/api/collections/predictions/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+    return this.toPrediction(data);
   }
 
   async deletePrediction(id: string): Promise<void> {
-    try {
-      await this.request(`/api/collections/predictions/records/${id}`, { method: 'DELETE' });
-    } catch (e) {
-      console.error('[PB] deletePrediction failed:', e);
-    }
+    await this.request(`/api/collections/predictions/records/${id}`, { method: 'DELETE' });
   }
 
   /**
