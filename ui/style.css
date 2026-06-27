@@ -44,6 +44,14 @@ body {
   letter-spacing: -0.02em;
 }
 
+/* ===== SAFE AREA VARIABLES ===== */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
 /* ===== LAYOUT ===== */
 .app-layout {
   display: flex;
@@ -70,6 +78,7 @@ body {
   height: 100vh;
   z-index: 46;
   transition: transform var(--transition);
+  padding-top: var(--safe-top);
 }
 
 .sidebar-header {
@@ -225,6 +234,9 @@ body {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   padding: 12px 16px;
+  padding-top: calc(12px + var(--safe-top));
+  padding-left: calc(16px + var(--safe-left));
+  padding-right: calc(16px + var(--safe-right));
   align-items: center;
   gap: 12px;
 }
@@ -259,6 +271,8 @@ body {
   border-top: 1px solid var(--border);
   padding: 6px 4px;
   padding-bottom: max(6px, env(safe-area-inset-bottom));
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
   justify-content: space-around;
 }
 
@@ -984,11 +998,11 @@ tr:last-child td {
   }
 
   .main-content {
-    padding: 64px 16px 90px;
+    padding: calc(64px + var(--safe-top)) 16px calc(90px + var(--safe-bottom));
   }
 
   .fab {
-    bottom: 80px;
+    bottom: calc(80px + var(--safe-bottom));
     right: 16px;
   }
 
