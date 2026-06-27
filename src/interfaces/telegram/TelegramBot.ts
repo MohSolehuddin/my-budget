@@ -138,8 +138,8 @@ export class TelegramBot {
       ctx.reply(
         'Bayar hutang:\n\n' +
         '*Format:*\n' +
-        'Nama Hutang | Jumlah Bayar | Tanggal (YYYY-MM-DD)\n' +
-        'Contoh: ShopeePayLater | 500000 | 2026-06-20'
+        'Bayar | Nama Hutang | Jumlah Bayar | Tanggal (YYYY-MM-DD)\n' +
+        'Contoh: Bayar | ShopeePayLater | 500000 | 2026-06-20'
       );
     });
 
@@ -152,22 +152,35 @@ export class TelegramBot {
       for (const line of lines) {
         const parts = line.split('|').map((s) => s.trim());
 
-        // Debt payment: triggered when first column matches an existing debt name
-        if (parts.length >= 2) {
-          const [first, second, third] = parts;
+        // Debt payment: triggered when first column matches 'Bayar'
+        if (parts[0].toLowerCase() === 'bayar' && parts.length >= 3) {
+          const [bayarWord, debtName, amountStr, dateStr] = parts;
           const debts = await this.listDebtsUseCase.execute();
-          const matchedDebt = debts.find((d: any) => d.name.toLowerCase() === first.toLowerCase());
-          const amount = parseFloat(second.replace(/\./g, '').replace(/,/g, '.'));
+          const matchedDebt = debts.find((d: any) => d.name.toLowerCase() === debtName.toLowerCase());
+          const amount = parseFloat(amountStr.replace(/\./g, '').replace(/,/g, '.'));
 
           if (matchedDebt && !isNaN(amount) && amount > 0) {
-            const paymentDate = third || new Date().toISOString().split('T')[0];
+            const paymentDate = dateStr || new Date().toISOString().split('T')[0];
             await this.payDebtUseCase.execute({
               debtId: matchedDebt.id,
               amount,
               paymentDate,
               isInstallment: false,
             });
-            ctx.reply(`✅ Pembayaran Rp ${amount.toLocaleString('id-ID')} untuk "${matchedDebt.name}" berhasil dicatat!\nSisa hutang: Rp ${Math.max(0, matchedDebt.remainingAmount - amount).toLocaleString('id-ID')}`);
+            
+            // Integrasi ke Budget
+            await this.budgetService.addTransaction({
+              title: `Bayar Hutang: ${matchedDebt.name}`,
+              amount: amount,
+              date: paymentDate,
+              categoryId: 'Pembayaran Hutang',
+            });
+
+            ctx.reply(`✅ Pembayaran Rp ${amount.toLocaleString('id-ID')} untuk "${matchedDebt.name}" berhasil dicatat!\nSisa hutang: Rp ${Math.max(0, matchedDebt.remainingAmount - amount).toLocaleString('id-ID')}\n(Otomatis tercatat sebagai pengeluaran)`);
+            handled = true;
+            continue;
+          } else {
+            ctx.reply(`❌ Hutang "${debtName}" tidak ditemukan atau jumlah tidak valid.`);
             handled = true;
             continue;
           }
@@ -210,7 +223,7 @@ export class TelegramBot {
             });
             ctx.reply(`✅ Transaksi "${title}" sebesar Rp ${amount.toLocaleString('id-ID')} berhasil dicatat!`);
           } else {
-            ctx.reply('⚠️ Format tidak sesuai. Gunakan salah satu:\n• *Nama | Jumlah | Kategori*\n• *Nama Hutang | Jumlah Bayar*\n• *Nama Hutang | Jumlah | Tipe | Bunga | Jangka*', { parse_mode: 'Markdown' });
+            ctx.reply('⚠️ Format tidak sesuai. Gunakan salah satu:\n• *Nama | Jumlah | Kategori*\n• *Bayar | Nama Hutang | Jumlah Bayar*\n• *Nama Hutang | Jumlah | Tipe | Bunga | Jangka*', { parse_mode: 'Markdown' });
           }
         }
       }

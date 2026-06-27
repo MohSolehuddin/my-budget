@@ -107,19 +107,97 @@ export class PocketBaseService {
     }));
   }
 
-  async updateTransaction(id: string, data: Partial<{ title: string; amount: number; date: string; categoryId: string; notes: string }>): Promise<any> {
+  async createTransaction(record: any): Promise<any> {
+    const data = await this.request('/api/collections/transactions/records', {
+      method: 'POST',
+      body: JSON.stringify(record),
+    });
+    
+    if (record.pocket && record.amount) {
+      try {
+        const pocket = await this.getPocketById(record.pocket);
+        if (pocket) {
+          await this.updatePocket(pocket.id, { balance: (pocket.balance || 0) + record.amount });
+        }
+      } catch (e) {
+        console.error('Failed to update pocket balance on create:', e);
+      }
+    }
+    return data;
+  }
+
+  async updateTransaction(id: string, data: Partial<{ title: string; amount: number; date: string; categoryId: string; pocketId: string; notes: string }>): Promise<any> {
+    let oldTx: any;
+    try {
+      oldTx = await this.request(`/api/collections/transactions/records/${id}`);
+    } catch (e) {
+      throw new Error(`Transaction ${id} not found`);
+    }
+
     const body: any = {};
     if (data.title !== undefined) body.title = data.title;
     if (data.amount !== undefined) body.amount = data.amount;
     if (data.date !== undefined) body.date = data.date;
     if (data.categoryId !== undefined) body.category = data.categoryId;
+    if (data.pocketId !== undefined) body.pocket = data.pocketId;
     if (data.notes !== undefined) body.notes = data.notes;
+    
     const result = await this.request(`/api/collections/transactions/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+
+    try {
+      const oldPocketId = oldTx.pocket;
+      const newPocketId = body.pocket !== undefined ? body.pocket : oldPocketId;
+      const oldAmount = oldTx.amount || 0;
+      const newAmount = result.amount || 0;
+
+      if (oldPocketId === newPocketId) {
+        if (oldPocketId && oldAmount !== newAmount) {
+          const pocket = await this.getPocketById(oldPocketId);
+          if (pocket) {
+            await this.updatePocket(oldPocketId, { balance: (pocket.balance || 0) - oldAmount + newAmount });
+          }
+        }
+      } else {
+        if (oldPocketId) {
+          const oldPocket = await this.getPocketById(oldPocketId);
+          if (oldPocket) {
+            await this.updatePocket(oldPocketId, { balance: (oldPocket.balance || 0) - oldAmount });
+          }
+        }
+        if (newPocketId) {
+          const newPocket = await this.getPocketById(newPocketId);
+          if (newPocket) {
+            await this.updatePocket(newPocketId, { balance: (newPocket.balance || 0) + newAmount });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to update pocket balances on transaction update:', e);
+    }
+
     return result;
   }
 
   async deleteTransaction(id: string): Promise<void> {
+    let oldTx: any;
+    try {
+      oldTx = await this.request(`/api/collections/transactions/records/${id}`);
+    } catch (e) {
+      return; // Already deleted or not found
+    }
+    
     await this.request(`/api/collections/transactions/records/${id}`, { method: 'DELETE' });
+
+    if (oldTx.pocket && oldTx.amount) {
+      try {
+        const pocket = await this.getPocketById(oldTx.pocket);
+        if (pocket) {
+          await this.updatePocket(pocket.id, { balance: (pocket.balance || 0) - oldTx.amount });
+        }
+      } catch (e) {
+        console.error('Failed to revert pocket balance on delete:', e);
+      }
+    }
   }
 
   async getCategories(): Promise<any[]> {
@@ -173,16 +251,13 @@ export class PocketBaseService {
     }
 
     for (const tx of transactions) {
-      await this.request('/api/collections/transactions/records', {
-        method: 'POST',
-        body: JSON.stringify({
-          title: tx.title,
-          amount: tx.amount,
-          date: tx.date || new Date().toISOString().split('T')[0],
-          category: categoryMap[tx.categoryId] || null,
-          subcategory: tx.subcategoryId || null,
-          source: 'telegram',
-        }),
+      await this.createTransaction({
+        title: tx.title,
+        amount: tx.amount,
+        date: tx.date || new Date().toISOString().split('T')[0],
+        category: categoryMap[tx.categoryId] || null,
+        subcategory: tx.subcategoryId || null,
+        source: 'telegram',
       });
     }
     console.log(`[PB] Saved ${transactions.length} transaction(s) to PocketBase`);
@@ -395,6 +470,26 @@ export class PocketBaseService {
       }));
     } catch {
       return [];
+    }
+  }
+
+  async getPocketById(id: string): Promise<any | null> {
+    try {
+      const data = await this.request(`/api/collections/pockets/records/${id}`);
+      return {
+        id: data.id,
+        name: data.name,
+        balance: data.balance || 0,
+        icon: data.icon,
+        color: data.color,
+        type: data.type,
+        notes: data.notes,
+        accountNumber: data.account_number || '',
+        bankName: data.bank_name || '',
+        isArchived: data.is_archived ?? false,
+      };
+    } catch {
+      return null;
     }
   }
 
@@ -701,10 +796,7 @@ export class PocketBaseService {
           if (rt.pocketId) body.pocket = rt.pocketId;
           if (rt.notes) body.notes = rt.notes;
 
-          await this.request('/api/collections/transactions/records', {
-            method: 'POST',
-            body: JSON.stringify(body),
-          });
+          await this.createTransaction(body);
 
           // Update last_generated
           await this.request(`/api/collections/recurring_transactions/records/${rt.id}`, {

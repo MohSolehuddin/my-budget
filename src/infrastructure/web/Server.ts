@@ -236,13 +236,8 @@ export const createServer = async () => {
       const totalIncome = incomeTx.reduce((sum: number, t: any) => sum + Math.abs(t.amount || 0), 0);
       const totalSpent = expenseTx.reduce((sum: number, t: any) => sum + Math.abs(t.amount || 0), 0);
 
-      // Calculate pocket balances from ALL transactions (including pre-cutoff, for running balance)
-      // But we use dashboardTx for display, while balance includes everything for accuracy
-      const pocketsWithBalance = pockets.map((p: any) => {
-        const pocketTx = transactions.filter((t: any) => t.pocketId === p.id);
-        const txBalance = pocketTx.reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
-        return { ...p, balance: (p.balance || 0) + txBalance };
-      });
+      // Pocket balances are now correctly maintained in the database
+      const pocketsWithBalance = pockets;
 
       // Recent transactions from dashboard only
       const recentTransactions = dashboardTx.slice(0, 10);
@@ -390,10 +385,7 @@ export const createServer = async () => {
           source: 'manual',
         };
 
-        await pocketbaseService.request('/api/collections/transactions/records', {
-          method: 'POST',
-          body: JSON.stringify(record),
-        });
+        await pocketbaseService.createTransaction(record);
 
         reply.code(201).send({ status: 'success', message: 'Transaction added' });
       } catch (error) {
