@@ -85,6 +85,7 @@ const API = {
     const headers = {};
     if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
     const res = await fetch(path, { headers });
+    if (res.status === 401) { logout(); throw new Error('Session expired, please login again'); }
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
@@ -92,6 +93,7 @@ const API = {
     const headers = { 'Content-Type': 'application/json' };
     if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
     const res = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) });
+    if (res.status === 401) { logout(); throw new Error('Session expired, please login again'); }
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
@@ -99,6 +101,7 @@ const API = {
     const headers = { 'Content-Type': 'application/json' };
     if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
     const res = await fetch(path, { method: 'PUT', headers, body: JSON.stringify(body) });
+    if (res.status === 401) { logout(); throw new Error('Session expired, please login again'); }
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
@@ -106,6 +109,7 @@ const API = {
     const headers = {};
     if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
     const res = await fetch(path, { method: 'DELETE', headers });
+    if (res.status === 401) { logout(); throw new Error('Session expired, please login again'); }
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },

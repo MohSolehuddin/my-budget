@@ -70,6 +70,18 @@ export const createServer = async () => {
     return null;
   };
 
+  // Verify user token and return userId, or null if invalid/expired
+  const getVerifiedUserId = async (request: any): Promise<string | null> => {
+    const token = getUserToken(request);
+    if (!token) return null;
+    const decoded = decodeJWT(token);
+    const userId = decoded?.id;
+    if (!userId) return null;
+    // Verify user still exists in PocketBase (token may be expired/user deleted)
+    const valid = await pocketbaseService.verifyUserId(userId);
+    return valid ? userId : null;
+  };
+
   // ===== AUTH ENDPOINTS =====
 
   // POST /api/auth/login
@@ -164,9 +176,10 @@ export const createServer = async () => {
     '/api/cutoffs',
     async (request, reply) => {
       try {
-        const token = request.cookies?.token || (request.headers.authorization || '').replace('Bearer ', '');
-        const decoded = decodeJWT(token);
-        const userId = decoded?.id;
+        const userId = await getVerifiedUserId(request);
+        if (!userId) {
+          return reply.code(401).send({ error: 'Unauthorized' });
+        }
         const result = await pocketbaseService.createCutoff({
           title: request.body.title,
           cutoffDate: request.body.cutoffDate,
@@ -365,15 +378,7 @@ export const createServer = async () => {
     async (request, reply) => {
       try {
         const body = request.body;
-        const token = getUserToken(request);
-        if (!token) {
-          return reply.code(401).send({ error: 'Unauthorized' });
-        }
-        console.log('[POST /api/transactions] token length:', token.length, 'first 20:', token.substring(0, 20));
-        const decoded = decodeJWT(token);
-        console.log('[POST /api/transactions] decoded:', JSON.stringify(decoded));
-        const userId = decoded?.id;
-
+        const userId = await getVerifiedUserId(request);
         if (!userId) {
           return reply.code(401).send({ error: 'Unauthorized' });
         }
@@ -715,12 +720,7 @@ export const createServer = async () => {
     '/api/savings-targets',
     async (request, reply) => {
       try {
-        const token = getUserToken(request);
-        if (!token) {
-          return reply.code(401).send({ error: 'Unauthorized' });
-        }
-        const decoded = decodeJWT(token);
-        const userId = decoded?.id;
+        const userId = await getVerifiedUserId(request);
         if (!userId) {
           return reply.code(401).send({ error: 'Unauthorized' });
         }
@@ -780,12 +780,7 @@ export const createServer = async () => {
     '/api/recurring-transactions',
     async (request, reply) => {
       try {
-        const token = getUserToken(request);
-        if (!token) {
-          return reply.code(401).send({ error: 'Unauthorized' });
-        }
-        const decoded = decodeJWT(token);
-        const userId = decoded?.id;
+        const userId = await getVerifiedUserId(request);
         if (!userId) {
           return reply.code(401).send({ error: 'Unauthorized' });
         }
@@ -855,12 +850,7 @@ export const createServer = async () => {
     '/api/recurring-budgets',
     async (request, reply) => {
       try {
-        const token = getUserToken(request);
-        if (!token) {
-          return reply.code(401).send({ error: 'Unauthorized' });
-        }
-        const decoded = decodeJWT(token);
-        const userId = decoded?.id;
+        const userId = await getVerifiedUserId(request);
         if (!userId) {
           return reply.code(401).send({ error: 'Unauthorized' });
         }
@@ -933,12 +923,7 @@ export const createServer = async () => {
     '/api/ai-summaries',
     async (request, reply) => {
       try {
-        const token = getUserToken(request);
-        if (!token) {
-          return reply.code(401).send({ error: 'Unauthorized' });
-        }
-        const decoded = decodeJWT(token);
-        const userId = decoded?.id;
+        const userId = await getVerifiedUserId(request);
         if (!userId) {
           return reply.code(401).send({ error: 'Unauthorized' });
         }
@@ -986,12 +971,7 @@ export const createServer = async () => {
     '/api/predictions',
     async (request, reply) => {
       try {
-        const token = getUserToken(request);
-        if (!token) {
-          return reply.code(401).send({ error: 'Unauthorized' });
-        }
-        const decoded = decodeJWT(token);
-        const userId = decoded?.id;
+        const userId = await getVerifiedUserId(request);
         if (!userId) {
           return reply.code(401).send({ error: 'Unauthorized' });
         }
@@ -1035,12 +1015,10 @@ export const createServer = async () => {
     '/api/predictions/generate',
     async (request, reply) => {
       try {
-        const token = request.cookies?.token || (request.headers.authorization || '').replace('Bearer ', '');
-        const decoded = decodeJWT(token);
-        const userId = decoded?.id;
+        const userId = await getVerifiedUserId(request);
         const result = await pocketbaseService.generatePredictions({
           monthsHistory: request.body?.monthsHistory,
-          userId,
+          userId: userId || undefined,
         });
         reply.send({ status: 'success', data: result });
       } catch (error) {

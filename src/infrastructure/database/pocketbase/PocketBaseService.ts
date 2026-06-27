@@ -29,6 +29,19 @@ export class PocketBaseService {
     return data;
   }
 
+  /**
+   * Verify that a user ID exists in PocketBase.
+   * Returns true if valid, false if user not found or error.
+   */
+  async verifyUserId(userId: string): Promise<boolean> {
+    try {
+      await this.request(`/api/collections/users/records/${userId}`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async getBudgets(categoryId?: string): Promise<any[]> {
     const params = new URLSearchParams();
     params.set('perPage', '500');
