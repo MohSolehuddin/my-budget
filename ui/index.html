@@ -52,19 +52,36 @@
 
   <!-- Main app (hidden until login) -->
   <div id="app-screen" class="hidden" style="display:flex;min-height:100vh">
-    <nav class="sidebar">
+    <button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+    <div class="sidebar-backdrop" onclick="toggleSidebar(false)"></div>
+    <nav id="sidebar" class="sidebar">
       <div class="logo">💰 My Budget</div>
       <a href="#" data-page="summary" class="nav-link active">📊 Summary</a>
       <a href="#" data-page="transactions" class="nav-link">💸 Transactions</a>
       <a href="#" data-page="budgets" class="nav-link">🎯 Budgets</a>
       <a href="#" data-page="debts" class="nav-link">🏦 Debts</a>
       <a href="#" data-page="pockets" class="nav-link">👛 Pockets</a>
+      <a href="#" data-page="savings-targets" class="nav-link">🎯 Targets</a>
+      <a href="#" data-page="recurring-transactions" class="nav-link">🔁 Recurring</a>
+      <a href="#" data-page="insights" class="nav-link">📈 Insights</a>
+      <a href="#" data-page="cutoffs" class="nav-link">✂️ Cutoffs</a>
       <a href="#" data-page="categories" class="nav-link">🏷️ Categories</a>
       <div style="margin-top:auto;padding-top:16px;border-top:1px solid var(--surface2)">
         <div style="font-size:.8rem;color:var(--text2);margin-bottom:4px" id="user-display"></div>
         <button class="btn btn-sm btn-outline" onclick="logout()" style="width:100%">🚪 Logout</button>
       </div>
     </nav>
+
+    <!-- Bottom nav bar (mobile only) -->
+    <nav class="bottom-nav" id="bottom-nav">
+      <a href="#" data-page="summary" class="bottom-nav-link active"><span class="bn-icon">📊</span>Summary</a>
+      <a href="#" data-page="transactions" class="bottom-nav-link"><span class="bn-icon">💸</span>Transaksi</a>
+      <a href="#" data-page="pockets" class="bottom-nav-link"><span class="bn-icon">👛</span>Kantong</a>
+      <a href="#" data-page="savings-targets" class="bottom-nav-link"><span class="bn-icon">🎯</span>Targets</a>
+      <a href="#" data-page="recurring-transactions" class="bottom-nav-link"><span class="bn-icon">🔁</span>Recurring</a>
+      <a href="#" data-page="insights" class="bottom-nav-link"><span class="bn-icon">📈</span>Insights</a>
+    </nav>
+
     <main id="app"></main>
   </div>
 

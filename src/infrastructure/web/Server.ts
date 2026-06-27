@@ -22,7 +22,10 @@ const __dirname = path.dirname(__filename);
 function decodeJWT(token: string): any {
   try {
     const payload = token.split('.')[1];
-    return JSON.parse(Buffer.from(payload, 'base64').toString());
+    // JWT uses base64url (not standard base64): replace - → +, _ → /, add padding
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    return JSON.parse(Buffer.from(padded, 'base64').toString());
   } catch {
     return null;
   }
@@ -144,36 +147,133 @@ export const createServer = async () => {
     return { status: 'ok', timestamp: new Date().toISOString() };
   });
 
+  // ===== CUTOFFS =====
+
+  // GET /api/cutoffs
+  server.get('/api/cutoffs', async (_request, reply) => {
+    try {
+      const cutoffs = await pocketbaseService.getCutoffs();
+      reply.send({ status: 'success', data: cutoffs });
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to fetch cutoffs', details: (error as Error).message });
+    }
+  });
+
+  // POST /api/cutoffs
+  server.post<{ Body: { title: string; cutoffDate: string; notes?: string } }>(
+    '/api/cutoffs',
+    async (request, reply) => {
+      try {
+        const token = request.cookies?.token || (request.headers.authorization || '').replace('Bearer ', '');
+        const decoded = decodeJWT(token);
+        const userId = decoded?.id;
+        const result = await pocketbaseService.createCutoff({
+          title: request.body.title,
+          cutoffDate: request.body.cutoffDate,
+          notes: request.body.notes,
+          userId,
+        });
+        reply.code(201).send({ status: 'success', data: result });
+      } catch (error) {
+        reply.code(500).send({ error: 'Failed to create cutoff', details: (error as Error).message });
+      }
+    }
+  );
+
+  // PUT /api/cutoffs/:id
+  server.put<{ Params: { id: string }; Body: { title?: string; cutoffDate?: string; notes?: string } }>(
+    '/api/cutoffs/:id',
+    async (request, reply) => {
+      try {
+        await pocketbaseService.updateCutoff(request.params.id, request.body);
+        reply.send({ status: 'success', message: 'Cutoff updated' });
+      } catch (error) {
+        reply.code(500).send({ error: 'Failed to update cutoff', details: (error as Error).message });
+      }
+    }
+  );
+
+  // DELETE /api/cutoffs/:id
+  server.delete<{ Params: { id: string } }>('/api/cutoffs/:id', async (request, reply) => {
+    try {
+      await pocketbaseService.deleteCutoff(request.params.id);
+      reply.send({ status: 'success', message: 'Cutoff deleted' });
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to delete cutoff', details: (error as Error).message });
+    }
+  });
+
   // ===== SUMMARY =====
   server.get('/api/summary', async (_request, reply) => {
     try {
-      const [budgets, transactions, debtSummary, pockets] = await Promise.all([
+      // Get latest cutoff date — transactions before this date are excluded from dashboard
+      const cutoffDate = await pocketbaseService.getLatestCutoffDate().catch(() => null);
+
+      const [budgets, transactions, debtSummary, pockets, categories] = await Promise.all([
         pocketbaseService.getBudgets().catch(() => []),
         pocketbaseService.getTransactions().catch(() => []),
         getDebtSummaryUseCase.execute().catch(() => null),
         pocketbaseService.getPockets().catch(() => []),
+        pocketbaseService.getCategories().catch(() => []),
       ]);
 
+      // Filter out transactions before cutoff date (they're history, not for dashboard)
+      const dashboardTx = cutoffDate
+        ? transactions.filter((t: any) => {
+            const txDate = (t.date || '').split('T')[0];
+            return txDate >= cutoffDate;
+          })
+        : transactions;
+
+      // Find the Transfer category ID to exclude from income/spent
+      const transferCategory = categories.find((c: any) =>
+        c.name?.toLowerCase() === 'transfer'
+      );
+      const transferCategoryId = transferCategory?.id;
+
       const totalBudget = budgets.reduce((sum: number, b: any) => sum + (b.amount || 0), 0);
-      const totalSpent = transactions.reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
-      const recentTransactions = transactions.slice(0, 10);
+
+      // Exclude Transfer category from income/spent (antar-kantong, bukan real income/expense)
+      const realTransactions = dashboardTx.filter((t: any) =>
+        t.categoryId !== transferCategoryId
+      );
+
+      // Separate income vs expense (excluding transfers)
+      const incomeTx = realTransactions.filter((t: any) => t.amount > 0);
+      const expenseTx = realTransactions.filter((t: any) => t.amount < 0);
+      const totalIncome = incomeTx.reduce((sum: number, t: any) => sum + Math.abs(t.amount || 0), 0);
+      const totalSpent = expenseTx.reduce((sum: number, t: any) => sum + Math.abs(t.amount || 0), 0);
+
+      // Calculate pocket balances from ALL transactions (including pre-cutoff, for running balance)
+      // But we use dashboardTx for display, while balance includes everything for accuracy
+      const pocketsWithBalance = pockets.map((p: any) => {
+        const pocketTx = transactions.filter((t: any) => t.pocketId === p.id);
+        const txBalance = pocketTx.reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
+        return { ...p, balance: (p.balance || 0) + txBalance };
+      });
+
+      // Recent transactions from dashboard only
+      const recentTransactions = dashboardTx.slice(0, 10);
 
       reply.send({
         status: 'success',
         data: {
           totalBudget,
+          totalIncome,
           totalSpent,
           remaining: totalBudget - totalSpent,
           budgetCount: budgets.length,
-          transactionCount: transactions.length,
+          transactionCount: dashboardTx.length,
+          totalTransactionsAll: transactions.length,
+          cutoffDate,
           debtSummary,
-          pockets,
+          pockets: pocketsWithBalance,
           recentTransactions,
           budgets: budgets.map((b: any) => ({
             ...b,
-            spentAmount: transactions
+            spentAmount: dashboardTx
               .filter((t: any) => t.categoryId === b.categoryId)
-              .reduce((sum: number, t: any) => sum + (t.amount || 0), 0),
+              .reduce((sum: number, t: any) => sum + Math.abs(t.amount || 0), 0),
           })),
         },
       });
@@ -236,11 +336,23 @@ export const createServer = async () => {
   server.get('/api/transactions', async (request, reply) => {
     try {
       const query = request.query as any;
-      const transactions = await pocketbaseService.getTransactions({
+      let transactions = await pocketbaseService.getTransactions({
         categoryId: query.categoryId,
         startDate: query.startDate,
         endDate: query.endDate,
       });
+
+      // If no explicit date filter, apply cutoff filter by default
+      if (!query.startDate && !query.endDate) {
+        const cutoffDate = await pocketbaseService.getLatestCutoffDate().catch(() => null);
+        if (cutoffDate) {
+          transactions = transactions.filter((t: any) => {
+            const txDate = (t.date || '').split('T')[0];
+            return txDate >= cutoffDate;
+          });
+        }
+      }
+
       reply.send({ status: 'success', data: transactions });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to fetch transactions', details: (error as Error).message });
@@ -248,11 +360,53 @@ export const createServer = async () => {
   });
 
   // POST /api/transactions
-  server.post<{ Body: { title: string; amount: number; date: string; categoryId?: string; notes?: string } }>(
+  server.post<{ Body: { description?: string; title?: string; amount: number; date: string; category?: string; categoryId?: string; pocket?: string; type?: string; notes?: string } }>(
     '/api/transactions',
     async (request, reply) => {
       try {
-        await pocketbaseService.saveTransactionsToPB([request.body]);
+        const body = request.body;
+        const token = request.cookies?.token || (request.headers.authorization || '').replace('Bearer ', '');
+        console.log('[POST /api/transactions] token length:', token.length, 'first 20:', token.substring(0, 20));
+        const decoded = decodeJWT(token);
+        console.log('[POST /api/transactions] decoded:', JSON.stringify(decoded));
+        const userId = decoded?.id;
+
+        if (!userId) {
+          return reply.code(401).send({ error: 'Unauthorized' });
+        }
+
+        // Resolve category name → ID
+        let categoryId = body.categoryId || null;
+        if (!categoryId && body.category) {
+          const params = new URLSearchParams({ filter: `name='${body.category}'`, perPage: '1' });
+          const catData = await pocketbaseService.request(`/api/collections/budget_categories/records?${params.toString()}`);
+          categoryId = catData.items?.[0]?.id || null;
+        }
+
+        // Resolve pocket name → ID
+        let pocketId = null;
+        if (body.pocket) {
+          const params = new URLSearchParams({ filter: `name='${body.pocket}'`, perPage: '1' });
+          const pocketData = await pocketbaseService.request(`/api/collections/pockets/records?${params.toString()}`);
+          pocketId = pocketData.items?.[0]?.id || null;
+        }
+
+        const record: any = {
+          user: userId,
+          description: body.description || body.title || '',
+          amount: body.type === 'income' ? Math.abs(body.amount) : -Math.abs(body.amount),
+          type: body.type || (body.amount >= 0 ? 'income' : 'expense'),
+          date: body.date || new Date().toISOString().split('T')[0],
+          category: categoryId,
+          pocket: pocketId,
+          source: 'web',
+        };
+
+        await pocketbaseService.request('/api/collections/transactions/records', {
+          method: 'POST',
+          body: JSON.stringify(record),
+        });
+
         reply.code(201).send({ status: 'success', message: 'Transaction added' });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to add transaction', details: (error as Error).message });
@@ -487,7 +641,7 @@ export const createServer = async () => {
   });
 
   // POST /api/pockets
-  server.post<{ Body: { name: string; balance: number; icon?: string; color?: string; type?: string; notes?: string } }>(
+  server.post<{ Body: { name: string; balance: number; icon?: string; color?: string; type?: string; notes?: string; accountNumber?: string; bankName?: string } }>(
     '/api/pockets',
     async (request, reply) => {
       try {
@@ -500,7 +654,7 @@ export const createServer = async () => {
   );
 
   // PUT /api/pockets/:id
-  server.put<{ Params: { id: string }; Body: { name?: string; balance?: number; icon?: string; color?: string; type?: string; notes?: string; isArchived?: boolean } }>(
+  server.put<{ Params: { id: string }; Body: { name?: string; balance?: number; icon?: string; color?: string; type?: string; notes?: string; accountNumber?: string; bankName?: string; isArchived?: boolean } }>(
     '/api/pockets/:id',
     async (request, reply) => {
       try {
@@ -532,6 +686,258 @@ export const createServer = async () => {
         reply.send({ status: 'success', message: 'Transfer completed' });
       } catch (error) {
         reply.code(500).send({ error: 'Transfer failed', details: (error as Error).message });
+      }
+    }
+  );
+
+  // ===== SAVINGS TARGETS =====
+
+  // GET /api/savings-targets
+  server.get('/api/savings-targets', async (request, reply) => {
+    try {
+      const query = request.query as any;
+      const targets = await pocketbaseService.getSavingsTargets({
+        pocketId: query.pocketId,
+        status: query.status,
+      });
+      reply.send({ status: 'success', data: targets });
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to fetch savings targets', details: (error as Error).message });
+    }
+  });
+
+  // POST /api/savings-targets
+  server.post<{ Body: { title: string; targetAmount: number; currentAmount?: number; pocketId?: string; targetDate?: string; status?: string; icon?: string; color?: string; notes?: string } }>(
+    '/api/savings-targets',
+    async (request, reply) => {
+      try {
+        const token = request.cookies?.token || (request.headers.authorization || '').replace('Bearer ', '');
+        const decoded = decodeJWT(token);
+        const userId = decoded?.id;
+        const result = await pocketbaseService.createSavingsTarget({
+          ...request.body,
+          userId,
+        });
+        reply.code(201).send({ status: 'success', data: result });
+      } catch (error) {
+        reply.code(500).send({ error: 'Failed to create savings target', details: (error as Error).message });
+      }
+    }
+  );
+
+  // PUT /api/savings-targets/:id
+  server.put<{ Params: { id: string }; Body: { title?: string; targetAmount?: number; currentAmount?: number; pocketId?: string; targetDate?: string; status?: string; icon?: string; color?: string; notes?: string } }>(
+    '/api/savings-targets/:id',
+    async (request, reply) => {
+      try {
+        await pocketbaseService.updateSavingsTarget(request.params.id, request.body);
+        reply.send({ status: 'success', message: 'Savings target updated' });
+      } catch (error) {
+        reply.code(500).send({ error: 'Failed to update savings target', details: (error as Error).message });
+      }
+    }
+  );
+
+  // DELETE /api/savings-targets/:id
+  server.delete<{ Params: { id: string } }>('/api/savings-targets/:id', async (request, reply) => {
+    try {
+      await pocketbaseService.deleteSavingsTarget(request.params.id);
+      reply.send({ status: 'success', message: 'Savings target deleted' });
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to delete savings target', details: (error as Error).message });
+    }
+  });
+
+  // ===== RECURRING TRANSACTIONS =====
+
+  // GET /api/recurring-transactions
+  server.get('/api/recurring-transactions', async (request, reply) => {
+    try {
+      const query = request.query as any;
+      const recurring = await pocketbaseService.getRecurringTransactions({
+        pocketId: query.pocketId,
+        isActive: query.isActive === undefined ? undefined : query.isActive === 'true',
+      });
+      reply.send({ status: 'success', data: recurring });
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to fetch recurring transactions', details: (error as Error).message });
+    }
+  });
+
+  // POST /api/recurring-transactions
+  server.post<{ Body: { title: string; amount: number; type: string; categoryId?: string; pocketId?: string; dayOfMonth: number; frequency?: string; startDate?: string; endDate?: string; isActive?: boolean; notes?: string } }>(
+    '/api/recurring-transactions',
+    async (request, reply) => {
+      try {
+        const token = request.cookies?.token || (request.headers.authorization || '').replace('Bearer ', '');
+        const decoded = decodeJWT(token);
+        const userId = decoded?.id;
+        const result = await pocketbaseService.createRecurringTransaction({
+          ...request.body,
+          userId,
+        });
+        reply.code(201).send({ status: 'success', data: result });
+      } catch (error) {
+        reply.code(500).send({ error: 'Failed to create recurring transaction', details: (error as Error).message });
+      }
+    }
+  );
+
+  // PUT /api/recurring-transactions/:id
+  server.put<{ Params: { id: string }; Body: { title?: string; amount?: number; type?: string; categoryId?: string; pocketId?: string; dayOfMonth?: number; frequency?: string; startDate?: string; endDate?: string; isActive?: boolean; notes?: string } }>(
+    '/api/recurring-transactions/:id',
+    async (request, reply) => {
+      try {
+        await pocketbaseService.updateRecurringTransaction(request.params.id, request.body);
+        reply.send({ status: 'success', message: 'Recurring transaction updated' });
+      } catch (error) {
+        reply.code(500).send({ error: 'Failed to update recurring transaction', details: (error as Error).message });
+      }
+    }
+  );
+
+  // DELETE /api/recurring-transactions/:id
+  server.delete<{ Params: { id: string } }>('/api/recurring-transactions/:id', async (request, reply) => {
+    try {
+      await pocketbaseService.deleteRecurringTransaction(request.params.id);
+      reply.send({ status: 'success', message: 'Recurring transaction deleted' });
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to delete recurring transaction', details: (error as Error).message });
+    }
+  });
+
+  // POST /api/recurring-transactions/generate — auto-generate due recurring transactions
+  server.post('/api/recurring-transactions/generate', async (_request, reply) => {
+    try {
+      const result = await pocketbaseService.generateRecurringTransactions();
+      reply.send({ status: 'success', data: result });
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to generate recurring transactions', details: (error as Error).message });
+    }
+  });
+
+  // ===== AI SUMMARIES =====
+
+  // GET /api/ai-summaries
+  server.get('/api/ai-summaries', async (request, reply) => {
+    try {
+      const query = request.query as any;
+      const limit = Math.max(1, Math.min(500, parseInt(query.limit, 10) || 10));
+      const summaries = await pocketbaseService.getAISummaries({
+        period: query.period,
+        startDate: query.startDate,
+        endDate: query.endDate,
+      });
+      // Already sorted by -summary_date in PocketBaseService; apply limit
+      reply.send({ status: 'success', data: summaries.slice(0, limit) });
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to fetch AI summaries', details: (error as Error).message });
+    }
+  });
+
+  // POST /api/ai-summaries
+  server.post<{ Body: { summaryText: string; summaryDate: string; period?: string; totalIncome?: number; totalExpense?: number; net?: number; topCategories?: any[]; insights?: string; recommendations?: string } }>(
+    '/api/ai-summaries',
+    async (request, reply) => {
+      try {
+        const token = request.cookies?.token || (request.headers.authorization || '').replace('Bearer ', '');
+        const decoded = decodeJWT(token);
+        const userId = decoded?.id;
+        const result = await pocketbaseService.createAISummary({
+          ...request.body,
+          userId,
+        });
+        reply.code(201).send({ status: 'success', data: result });
+      } catch (error) {
+        reply.code(500).send({ error: 'Failed to create AI summary', details: (error as Error).message });
+      }
+    }
+  );
+
+  // DELETE /api/ai-summaries/:id
+  server.delete<{ Params: { id: string } }>('/api/ai-summaries/:id', async (request, reply) => {
+    try {
+      await pocketbaseService.deleteAISummary(request.params.id);
+      reply.send({ status: 'success', message: 'AI summary deleted' });
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to delete AI summary', details: (error as Error).message });
+    }
+  });
+
+  // ===== PREDICTIONS =====
+
+  // GET /api/predictions
+  server.get('/api/predictions', async (request, reply) => {
+    try {
+      const query = request.query as any;
+      const predictions = await pocketbaseService.getPredictions({
+        type: query.type,
+        targetMonth: query.targetMonth,
+        isAuto: query.isAuto === undefined ? undefined : query.isAuto === 'true',
+      });
+      reply.send({ status: 'success', data: predictions });
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to fetch predictions', details: (error as Error).message });
+    }
+  });
+
+  // POST /api/predictions
+  server.post<{ Body: { type: string; predictedAmount: number; targetMonth?: string; targetDate?: string; confidence?: number; basedOn?: any[]; isAuto?: boolean; isEditable?: boolean; details?: any } }>(
+    '/api/predictions',
+    async (request, reply) => {
+      try {
+        const token = request.cookies?.token || (request.headers.authorization || '').replace('Bearer ', '');
+        const decoded = decodeJWT(token);
+        const userId = decoded?.id;
+        const result = await pocketbaseService.createPrediction({
+          ...request.body,
+          userId,
+        });
+        reply.code(201).send({ status: 'success', data: result });
+      } catch (error) {
+        reply.code(500).send({ error: 'Failed to create prediction', details: (error as Error).message });
+      }
+    }
+  );
+
+  // PUT /api/predictions/:id
+  server.put<{ Params: { id: string }; Body: { type?: string; predictedAmount?: number; targetMonth?: string; targetDate?: string; confidence?: number; isAuto?: boolean; isEditable?: boolean; details?: any } }>(
+    '/api/predictions/:id',
+    async (request, reply) => {
+      try {
+        await pocketbaseService.updatePrediction(request.params.id, request.body);
+        reply.send({ status: 'success', message: 'Prediction updated' });
+      } catch (error) {
+        reply.code(500).send({ error: 'Failed to update prediction', details: (error as Error).message });
+      }
+    }
+  );
+
+  // DELETE /api/predictions/:id
+  server.delete<{ Params: { id: string } }>('/api/predictions/:id', async (request, reply) => {
+    try {
+      await pocketbaseService.deletePrediction(request.params.id);
+      reply.send({ status: 'success', message: 'Prediction deleted' });
+    } catch (error) {
+      reply.code(500).send({ error: 'Failed to delete prediction', details: (error as Error).message });
+    }
+  });
+
+  // POST /api/predictions/generate — auto-calculate predictions from transaction history
+  server.post<{ Body: { monthsHistory?: number } }>(
+    '/api/predictions/generate',
+    async (request, reply) => {
+      try {
+        const token = request.cookies?.token || (request.headers.authorization || '').replace('Bearer ', '');
+        const decoded = decodeJWT(token);
+        const userId = decoded?.id;
+        const result = await pocketbaseService.generatePredictions({
+          monthsHistory: request.body?.monthsHistory,
+          userId,
+        });
+        reply.send({ status: 'success', data: result });
+      } catch (error) {
+        reply.code(500).send({ error: 'Failed to generate predictions', details: (error as Error).message });
       }
     }
   );
