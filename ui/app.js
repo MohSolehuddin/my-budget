@@ -1597,11 +1597,11 @@ async function showRecurringForm(id) {
       <div class="form-row">
         <div class="form-group">
           <label>Start Date</label>
-          <input name="startDate" type="date" value="${(rec.startDate || '').split('T')[0]}">
+          <input name="startDate" type="date" value="${(rec.startDate || '').split('T')[0].split(' ')[0]}">
         </div>
         <div class="form-group">
           <label>End Date <small style="color:var(--text2)">(optional)</small></label>
-          <input name="endDate" type="date" value="${(rec.endDate || '').split('T')[0]}">
+          <input name="endDate" type="date" value="${(rec.endDate || '').split('T')[0].split(' ')[0]}">
         </div>
       </div>
       <div class="form-group">
