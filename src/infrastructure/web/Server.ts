@@ -110,31 +110,10 @@ export const createServer = async () => {
     }
   });
 
-  // POST /api/auth/register
-  server.post<{ Body: { email: string; password: string; passwordConfirm: string; name?: string } }>(
-    '/api/auth/register',
-    async (request, reply) => {
-      try {
-        const { email, password, passwordConfirm, name } = request.body;
-        const res = await fetch(`${pocketbaseService['apiUrl']}/api/collections/users/records`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, passwordConfirm, name: name || email.split('@')[0] }),
-        });
-        const data: any = await res.json();
-        if (!res.ok) {
-          reply.code(400).send({ error: data.message || 'Registration failed' });
-          return;
-        }
-        reply.code(201).send({
-          status: 'success',
-          data: { id: data.id, email: data.email, name: data.name },
-        });
-      } catch (error) {
-        reply.code(500).send({ error: 'Registration failed', details: (error as Error).message });
-      }
-    }
-  );
+  // POST /api/auth/register — DISABLED: only admin can create users via PocketBase admin panel
+  server.post('/api/auth/register', async (request, reply) => {
+    reply.code(403).send({ error: 'Registrasi dinonaktifkan. Hubungi admin untuk membuat akun.' });
+  });
 
   // GET /api/auth/me
   server.get('/api/auth/me', async (request, reply) => {

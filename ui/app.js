@@ -19,7 +19,6 @@ function logout() {
   document.getElementById('app-screen').classList.add('hidden');
   document.getElementById('auth-screen').classList.remove('hidden');
   document.getElementById('login-form').reset();
-  document.getElementById('register-form').reset();
 }
 
 // ===== AUTH API =====
@@ -41,42 +40,6 @@ async function handleLogin(e) {
     errEl.textContent = 'Network error: ' + e.message;
     errEl.classList.remove('hidden');
   }
-}
-
-async function handleRegister(e) {
-  e.preventDefault();
-  const f = e.target;
-  const errEl = document.getElementById('register-error');
-  errEl.classList.add('hidden');
-  if (f.password.value !== f.passwordConfirm.value) {
-    errEl.textContent = 'Passwords do not match';
-    errEl.classList.remove('hidden');
-    return;
-  }
-  try {
-    const res = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: f.email.value, password: f.password.value, passwordConfirm: f.passwordConfirm.value, name: f.name.value }),
-    });
-    const data = await res.json();
-    if (!res.ok) { errEl.textContent = data.error || 'Registration failed'; errEl.classList.remove('hidden'); return; }
-    toast('Registration successful! Please login.', 'success');
-    switchAuthTab('login');
-    document.getElementById('login-form').email.value = f.email.value;
-  } catch (e) {
-    errEl.textContent = 'Network error: ' + e.message;
-    errEl.classList.remove('hidden');
-  }
-}
-
-function switchAuthTab(tab) {
-  document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-  document.querySelector(`.auth-tab:nth-child(${tab === 'login' ? '1' : '2'})`).classList.add('active');
-  document.getElementById('login-form').classList.toggle('hidden', tab !== 'login');
-  document.getElementById('register-form').classList.toggle('hidden', tab !== 'register');
-  document.getElementById('login-error').classList.add('hidden');
-  document.getElementById('register-error').classList.add('hidden');
 }
 
 // ===== API HELPERS =====
