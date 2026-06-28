@@ -1,185 +1,267 @@
-# my-budget
-Budget tracker dengan PocketBase & Telegram Bot.
+# My Budget
 
-## Struktur Project
+Personal finance manager — PocketBase + Fastify backend, vanilla JS SPA frontend, Tauri v2 Android app.
+
+## Architecture
 
 ```
 my-budget/
-├── pocketbase/
-│   ├── docker-compose.yaml
-│   ├── Dockerfile
-│   ├── pb_data/
-│   ├── pb_public/
-│   ├── pb_migrations/
-│   └── pb_hooks/
-├── schema/
-│   └── collections.json
-├── src/
+├── src/                          # Backend (Bun + Fastify + TypeScript)
 │   ├── domain/
-│   │   ├── entities/
-│   │   ├── interfaces/
-│   │   └── use-cases/
+│   │   ├── entities/             # Transaction, Debt
+│   │   └── interfaces/           # BudgetService, DebtRepository, ITelegramBotService
 │   ├── infrastructure/
-│   │   ├── actual-budget/
-│   │   ├── database/pocketbase/
-│   │   ├── web/
-│   │   └── telegram/
-│   └── index.ts
-├── scripts/
-│   └── export-pb-schema.mjs
-├── package.json
-├── tsconfig.json
-└── README.md
+│   │   ├── database/pocketbase/  # PocketBaseService (CRUD for all collections)
+│   │   ├── web/Server.ts         # Fastify REST API + static file serving
+│   │   └── telegram/             # TelegramBot (Telegraf)
+│   ├── use-cases/                # Budget logic, daily allowance, debt tracking
+│   └── index.ts                  # Entry point — starts server + bot
+├── ui/                           # Frontend (vanilla JS SPA, no build step)
+│   ├── index.html                # SPA shell — loads 15 modules via <script> tags
+│   ├── style.css                 # Dark theme, Inter font, responsive, safe-area
+│   ├── contracts/UI_CONTRACTS.md # Module contracts (signatures, API shapes)
+│   ├── modules/                  # 15 JS modules (api, utils, router, pages, init)
+│   └── tests/                    # Unit tests (api, utils, router, summary)
+├── pocketbase/                   # PocketBase Docker setup
+├── schema/                       # PB collection schema JSON
+├── scripts/                      # PB schema export/seed
+├── .env                          # Config (POCKETBASE_URL, TOKEN, TELEGRAM_BOT_TOKEN, PORT)
+├── package.json                  # Bun project
+└── tsconfig.json
 ```
 
-## Setup
+## Quick Start
 
 ### 1. PocketBase
 
 ```bash
 cd ~/projects/my-budget/pocketbase
 docker compose up -d
+# PB runs at http://localhost:8091
 ```
 
-### 2. Import Collections
-
-Setelah PocketBase running, import schema:
-
-```bash
-cd ~/projects/my-budget
-node scripts/export-pb-schema.mjs
-```
-
-Import hasil export ke PocketBase Admin UI via **Settings > Backup/Restore > Restore**.
-
-### 3. Clone & Setup Project
+### 2. Backend
 
 ```bash
 cd ~/projects/my-budget
 cp .env.example .env
-# Edit .env dengan kredensial yang sesuai
+# Edit .env: POCKETBASE_URL, POCKETBASE_TOKEN, TELEGRAM_BOT_TOKEN, PORT
 bun install
+bun run dev          # Development (hot reload)
+# OR
+bun start            # Production
 ```
 
-### 4. Jalankan Server
+Server runs at `http://localhost:3012`.
+
+### 3. Frontend
+
+No build step needed. UI is served directly by Fastify from `ui/` directory.
+Open `http://localhost:3012` in browser.
+
+### 4. Android App
 
 ```bash
-bun run dev
+cd ~/projects/my-budget-app
+cargo tauri android build --apk
+# APK: src-tauri/gen/android/app/build/outputs/apk/universal/release/
+apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android \
+  --ks-key-alias androiddebugkey --key-pass pass:android \
+  --out my-budget.apk app-universal-release-unsigned.apk
 ```
 
-Server akan berjalan di `http://localhost:3001`.
+## PocketBase Collections
 
-### 5. Telegram Bot
+| Collection | Key Fields | Notes |
+|---|---|---|
+| `users` | email, name | Auth collection. Registration disabled — admin only. |
+| `transactions` | title, amount, date, type, categoryId, pocketId, user, source | amount: +income / -expense. source: manual/telegram/import |
+| `budgets` | categoryId, amount, periodStart, periodEnd | Period-based budget per category |
+| `debts` | name, type, originalAmount, remainingAmount, status | type: loan/credit_card/paylater/installment |
+| `debt_payments` | debtId, amount, paymentDate, paymentMethod | Linked to debts |
+| `pockets` | name, balance, type, icon, color, accountNumber, bankName | type: cash/bank/ewallet/investment |
+| `categories` | name, icon, color | Transaction categories |
+| `cutoffs` | title, cutoffDate, notes | Pre-cutoff transactions excluded from dashboard |
+| `savings_targets` | title, targetAmount, currentAmount, targetDate, targetType | targetType: pocket/investment |
+| `recurring_transactions` | title, amount, type, dayOfMonth, frequency, isActive | Auto-generate transactions |
+| `recurring_budgets` | title, amount, categoryId, dayOfMonth, frequency, isActive | Auto-generate budgets |
+| `predictions` | type, predictedAmount, targetMonth, confidence | AI-generated predictions |
+| `ai_summaries` | summaryText, summaryDate, totalIncome, totalExpense, net | AI daily summary (cron 19:00) |
 
-Edit `.env` dengan Telegram Bot Token, lalu jalankan:
+**Collection rules:** `@request.auth.id != ""` for all collections.
 
-```bash
-bun run telegram
-```
-
-## Fitur
-
-- **Transaksi**: Catat pengeluaran via Telegram atau API
-- **Budgeting**: Atur budget per kategori & sub-kategori
-- **Daily Allowance**: Hitung sisa budget harian
-- **Telegram Bot**: Add, budget, report, help
-- **Actual Budget Sync**: Sinkron ke Actual Budget API
+**PB date format:** `"2026-06-27 00:00:00.000Z"` (space separator, not T).
 
 ## API Endpoints
 
-| Method | Endpoint | Keterangan |
-|--------|----------|------------|
-| POST | `/api/budget/transactions` | Tambah transaksi |
-| GET | `/api/budget/progress` | Progress budget per kategori |
-| GET | `/api/budget/daily-report` | Laporan budget harian |
+### Auth
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | `/api/auth/login` | `{email, password}` | `{data: {token, user}}` |
+| GET | `/api/auth/me` | — | `{data: user}` |
+| POST | `/api/auth/register` | — | 403 (disabled) |
 
-## Telegram Bot Commands
+### Summary
+| Method | Path | Returns |
+|---|---|---|
+| GET | `/api/summary` | Income, spent, net, pockets, budgets, recent transactions, debt summary, cutoff info |
 
-- `/start` - Welcome message
-- `/add` - Tambah transaksi baru
-- `/budget` - Lihat progress budget
-- `/report` - Laporan budget harian
-- `/help` - Bantuan
+### Transactions
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/api/transactions` | — | `{data: [tx]}` (filtered by cutoff) |
+| POST | `/api/transactions` | `{title, amount, date, categoryId?, pocketId?, notes?}` | `{data: tx}` |
+| PUT | `/api/transactions/:id` | partial | `{data: tx}` |
+| DELETE | `/api/transactions/:id` | — | `{success: true}` |
 
-## Formula Daily Allowance
+### Budgets, Debts, Pockets, Categories, Cutoffs, Savings Targets, Recurring Transactions, Recurring Budgets, Predictions, AI Summaries
+All follow standard CRUD pattern: `GET /api/<resource>`, `POST /api/<resource>`, `PUT /api/:id`, `DELETE /api/:id`.
 
-Jika budget = **Rp 1.000.000** dan periode = **30 hari**:
+Special endpoints:
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/debts/:id/payments` | Record debt payment |
+| GET | `/api/debts/summary` | Debt stats + upcoming payments |
+| POST | `/api/pockets/transfer` | `{fromId, toId, amount}` |
+| POST | `/api/recurring-transactions/generate` | Auto-generate due transactions |
+| POST | `/api/recurring-budgets/generate` | Auto-generate due budgets |
+| POST | `/api/predictions/generate` | Generate predictions from history |
+| GET | `/api/ai-summaries?limit=N` | Recent AI summaries |
 
-- Daily Allowance = 1.000.000 / 30 = **Rp 33.333/day**
-- Jika hari ini beli **Rp 100.000**, sisa = **Rp 900.000**
-- Sisa hari = 29 hari
-- Sisa per hari = 900.000 / 29 = **Rp 31.034/hari**
+## UI Architecture
 
-Bot akan menampilkan sisa per hari agar user tidak melebihi budget.
+### Module System (no build step)
 
-## Deploy ke Production
+`index.html` loads 15 modules via `<script>` tags in order:
 
-### Prasyarat
-
-- Docker & Docker Compose
-- Node.js/Bun runtime
-- Telegram Bot Token
-- Actual Budget API (port 3001)
-- PocketBase (port 8091)
-
-### Langkah Deploy
-
-1. **Copy project ke VPS**
-   ```bash
-   scp -r ~/projects/my-budget user@your-server:/opt/my-budget
-   ```
-
-2. **Setup PocketBase di server**
-   ```bash
-   cd /opt/my-budget/pocketbase
-   # Update .env dengan kredensial server
-   docker compose up -d
-   ```
-
-3. **Import schema**
-   ```bash
-   cd /opt/my-budget
-   node scripts/export-pb-schema.mjs
-   ```
-
-4. **Setup environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env dengan production credentials
-   ```
-
-5. **Install dependencies & build**
-   ```bash
-   bun install
-   bun build  # check types
-   ```
-
-6. **Run production**
-   ```bash
-   bun start
-   ```
-
-### Docker Deployment
-
-```bash
-docker build -t my-budget .
-docker run -d -p 3001:3001 --env-file .env my-budget
+```
+utils.js → api.js → router.js → summary.js → transactions.js → budgets.js →
+debts.js → pockets.js → categories.js → cutoffs.js → targets.js →
+recurring.js → recurring-budgets.js → insights.js → init.js
 ```
 
-## Troubleshooting
+All functions are global (no imports/exports). See `ui/contracts/UI_CONTRACTS.md` for full signatures.
 
-### PocketBase tidak start
-- Pastikan port 8091 tidak terpakai
-- Cek logs: `docker compose logs pocketbase`
+### Key Design Decisions
 
-### Actual Budget sync gagal
-- Pastikan Actual Budget running di port 3001
-- Cek kredensial di `.env`
+- **Vanilla JS** — no React/Vue/Vite, no build step, no npm for frontend
+- **Dark theme** — `#0b0f14` background, Inter font, JetBrains Mono for numbers
+- **Safe area** — `env(safe-area-inset-*)` CSS variables for Android notch/status bar
+- **Grouped sidebar** — Main (Summary, Transactions, Insights) / Planning (Budgets, Targets, Recurring) / Management (Pockets, Debts, Categories, Cutoffs)
+- **Mobile** — hamburger drawer + bottom nav (4 items + More) + FAB for Add Transaction
+- **Cutoff strategy** — pre-cutoff transactions excluded from dashboard but still counted for pocket balances
+- **Auth** — JWT from PocketBase, stored in `localStorage['pb_token']`. Auto-logout on 401.
+- **Registration disabled** — only PB admin can create users
 
-### Telegram bot tidak merespon
-- Pastikan token benar di `.env`
-- Pastikan webhook/long polling aktif
+### Cutoff System
+
+Cutoff date = boundary. Transactions before cutoff are:
+- **Excluded** from: dashboard stats, transactions list, budget progress
+- **Included** in: pocket balance calculations (all-time)
+
+This lets users "start fresh" without losing historical data.
+
+## Environment Variables
+
+```env
+POCKETBASE_URL=http://localhost:8091
+POCKETBASE_TOKEN=<superuser token>
+TELEGRAM_BOT_TOKEN=<bot token>
+HOST=0.0.0.0
+PORT=3012
+LOG_LEVEL=info
+```
+
+**Important:** `POCKETBASE_TOKEN` must be regenerated if admin password is changed via PB panel.
+
+## Production Deployment
+
+### systemd service
+
+```bash
+# ~/.config/systemd/user/my-budget.service
+[Unit]
+Description=My Budget Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/my-budget
+ExecStart=%h/.npm-global/bin/bun run src/index.ts
+Restart=on-failure
+Environment=PATH=%h/.bun/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user enable my-budget
+systemctl --user start my-budget
+```
+
+### Reverse proxy
+
+Caddy/Nginx proxies `budget.msytc.my.id` → `localhost:3012`.
+
+## Tauri Android App
+
+Located at `~/projects/my-budget-app/`. Web-wrapper that opens `https://budget.msytc.my.id`.
+
+```
+my-budget-app/
+├── src/
+│   └── index.html       # Loading screen → redirect to budget.msytc.my.id
+└── src-tauri/
+    ├── Cargo.toml        # tauri 2, tauri-plugin-opener, serde, serde_json
+    ├── tauri.conf.json   # com.msytc.mybudget, CSP allows HTTPS
+    ├── capabilities/main.json
+    ├── build.rs
+    ├── src/lib.rs        # Entry point (mobile_entry_point)
+    └── src/main.rs       # Desktop fallback
+```
+
+**Build:**
+```bash
+export JAVA_HOME=~/jdk17
+export ANDROID_HOME=~/android-sdk
+export NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
+cd ~/projects/my-budget-app
+cargo tauri android build --apk
+apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android \
+  --ks-key-alias androiddebugkey --key-pass pass:android \
+  --out my-budget.apk <unsigned-apk>
+```
+
+**Safe area:** CSS in `ui/style.css` uses `env(safe-area-inset-*)` variables. The Tauri app renders behind the status bar — without these, content overlaps the clock/battery bar.
+
+## Cron Jobs
+
+| Job | Schedule | Description |
+|---|---|---|
+| AI Summary | 19:00 UTC | Fetch data, generate AI summary, save to PB, send to Telegram |
+
+## Tech Stack
+
+- **Runtime:** Bun
+- **Backend:** Fastify 5, TypeScript, `@fastify/static`, `@fastify/cookie`
+- **Database:** PocketBase 0.36 (Docker container `my-budget-pb`, port 8091)
+- **Frontend:** Vanilla JS, Inter + JetBrains Mono fonts, dark theme
+- **Mobile:** Tauri v2 (Rust + Android NDK)
+- **Bot:** Telegraf 4
+- **Tests:** Node.js built-in test runner
+
+## Development Rules
+
+1. **Contract first** — write/update `ui/contracts/UI_CONTRACTS.md` before implementing
+2. **Unit tests** — every new utility function needs tests in `ui/tests/`
+3. **Anti-crash** — all API calls wrapped in try-catch, graceful fallback
+4. **Null safety** — optional chaining, validate all external data
+5. **HTML escape** — use `h()` for all user-generated content in templates
+6. **Git** — prefix: `feat:`/`fix:`/`docs:`/`refactor:`/`test:`/`chore:`, max 72 char, imperative
+7. **Push** — 1x per feature
+8. **Safe area** — always handle `env(safe-area-inset-*)` for mobile
 
 ## License
+
 MIT
-# my-budget
