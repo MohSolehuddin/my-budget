@@ -209,10 +209,11 @@ export class PocketBaseService {
       name: item.name,
       icon: item.icon,
       color: item.color,
+      type: item.type || 'expense',
     }));
   }
 
-  async createCategory(cat: { name: string; icon?: string; color?: string }): Promise<any> {
+  async createCategory(cat: { name: string; icon?: string; color?: string; type?: string }): Promise<any> {
     const data = await this.request('/api/collections/budget_categories/records', {
       method: 'POST',
       body: JSON.stringify({
@@ -220,16 +221,18 @@ export class PocketBaseService {
         slug: cat.name.toLowerCase().replace(/\s+/g, '-'),
         icon: cat.icon || '',
         color: cat.color || '#3b82f6',
+        type: cat.type || 'expense',
       }),
     });
     return data;
   }
 
-  async updateCategory(id: string, cat: { name?: string; icon?: string; color?: string }): Promise<any> {
+  async updateCategory(id: string, cat: { name?: string; icon?: string; color?: string; type?: string }): Promise<any> {
     const body: any = {};
     if (cat.name !== undefined) { body.name = cat.name; body.slug = cat.name.toLowerCase().replace(/\s+/g, '-'); }
     if (cat.icon !== undefined) body.icon = cat.icon;
     if (cat.color !== undefined) body.color = cat.color;
+    if (cat.type !== undefined) body.type = cat.type;
     return this.request(`/api/collections/budget_categories/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
   }
 

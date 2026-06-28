@@ -136,23 +136,23 @@ Di-load via multiple `<script>` tags di `index.html`.
 
 ---
 
-## Module: `transactions.js`
+## Module: `transactions.js` (v1.1.0)
 
 ### `renderTransactions() → Promise<void>`
-- **Input:** none
-- **Output:** renders transaction table into `#app`
+- Renders table with columns: Date, Title, Category, Type (Income/Expense badge), Amount, Actions
 
 ### `showTransactionForm(id?) → Promise<void>`
-- **Input:** `id: string | undefined` — existing transaction ID for edit
-- **Output:** shows modal with form
+- Form includes type toggle (Expense/Income) at top
+- Categories filtered by selected type (expense→expense cats, income→income cats)
+- Amount field is always positive; sign determined by type
+- Date defaults to today
+- `onTxTypeChange(newType)` — re-fetches categories filtered by new type, updates pocket hint
 
 ### `saveTransaction(e, id) → Promise<void>`
-- **Input:** `e: SubmitEvent`, `id: string | undefined`
-- **Output:** POST/PUT to API, toast, closeModal, re-render
+- POST/PUT body: `{ title, amount (positive int), type: 'expense'|'income', date, categoryId?, pocketId?, notes? }`
+- Backend converts: income → `+amount`, expense → `-amount`
 
 ### `deleteTransaction(id) → Promise<void>`
-- **Input:** `id: string`
-- **Output:** confirm → DELETE → toast → re-render
 
 ---
 
@@ -190,11 +190,17 @@ Di-load via multiple `<script>` tags di `index.html`.
 
 ---
 
-## Module: `categories.js`
+## Module: `categories.js` (v1.1.0)
 
 ### `renderCategories() → Promise<void>`
+- Shows table with columns: Name, Type (Expense/Income badge), Color, Actions
+
 ### `showCategoryForm(id?) → Promise<void>`
+- Form fields: name, type (select: expense/income, default: expense), color, icon
+
 ### `saveCategory(e, id) → Promise<void>`
+- POST/PUT body: `{ name, type, icon?, color? }`
+
 ### `deleteCategory(id) → Promise<void>`
 
 ---
@@ -254,7 +260,7 @@ Di-load via multiple `<script>` tags di `index.html`.
 | GET | `/api/auth/me` | — | `{data: user}` |
 | GET | `/api/summary` | — | `{data: summary}` |
 | GET | `/api/transactions` | — | `{data: [tx]}` |
-| POST | `/api/transactions` | `{title, amount, date, categoryId?, pocketId?, notes?}` | `{data: tx}` |
+| POST | `/api/transactions` | `{title, amount, type, date, categoryId?, pocketId?, notes?}` | `{data: tx}` |
 | PUT | `/api/transactions/:id` | partial | `{data: tx}` |
 | DELETE | `/api/transactions/:id` | — | `{success: true}` |
 | GET | `/api/budgets` | — | `{data: [budget]}` |
@@ -273,8 +279,8 @@ Di-load via multiple `<script>` tags di `index.html`.
 | DELETE | `/api/pockets/:id` | — | `{success: true}` |
 | POST | `/api/pockets/transfer` | `{fromId, toId, amount}` | `{success: true}` |
 | GET | `/api/categories` | — | `{data: [category]}` |
-| POST | `/api/categories` | `{name, icon?, color?}` | `{data: category}` |
-| PUT | `/api/categories/:id` | partial | `{data: category}` |
+| POST | `/api/categories` | `{name, type?, icon?, color?}` | `{data: category}` |
+| PUT | `/api/categories/:id` | partial (name?, type?, icon?, color?) | `{data: category}` |
 | DELETE | `/api/categories/:id` | — | `{success: true}` |
 | GET | `/api/cutoffs` | — | `{data: [cutoff]}` |
 | POST | `/api/cutoffs` | `{title, cutoffDate, notes?}` | `{data: cutoff}` |

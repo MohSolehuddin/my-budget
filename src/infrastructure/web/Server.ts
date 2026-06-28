@@ -282,7 +282,7 @@ export const createServer = async () => {
   });
 
   // POST /api/categories
-  server.post<{ Body: { name: string; icon?: string; color?: string } }>(
+  server.post<{ Body: { name: string; icon?: string; color?: string; type?: string } }>(
     '/api/categories',
     async (request, reply) => {
       try {
@@ -295,7 +295,7 @@ export const createServer = async () => {
   );
 
   // PUT /api/categories/:id
-  server.put<{ Params: { id: string }; Body: { name?: string; icon?: string; color?: string } }>(
+  server.put<{ Params: { id: string }; Body: { name?: string; icon?: string; color?: string; type?: string } }>(
     '/api/categories/:id',
     async (request, reply) => {
       try {

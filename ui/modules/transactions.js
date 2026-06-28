@@ -1,8 +1,8 @@
-// ===== TRANSACTIONS MODULE v1.0.0 =====
+// ===== TRANSACTIONS MODULE v1.1.0 =====
 // Contract: ui/contracts/UI_CONTRACTS.md
 // Exposes: renderTransactions, showTransactionForm, saveTransaction, deleteTransaction
 // Dependencies (global): API, h, formatIDR, formatDate, toast, showModal, closeModal,
-//                         emptyState, SVG
+//                         emptyState, SVG, badge
 
 async function renderTransactions() {
   const app = document.getElementById('app');
@@ -32,6 +32,7 @@ async function renderTransactions() {
                 <th>Date</th>
                 <th>Title</th>
                 <th>Category</th>
+                <th>Type</th>
                 <th>Amount</th>
                 <th>Actions</th>
               </tr>
@@ -42,6 +43,7 @@ async function renderTransactions() {
                   <td>${formatDate(t.date)}</td>
                   <td>${h(t.title)}</td>
                   <td>${h(catMap[t.categoryId] || '-')}</td>
+                  <td>${badge(t.amount >= 0 ? 'Income' : 'Expense', t.amount >= 0 ? 'green' : 'red')}</td>
                   <td class="num-cell ${t.amount < 0 ? 'red' : 'green'}">${formatIDR(t.amount)}</td>
                   <td>
                     <button class="btn btn-sm btn-outline" onclick="showTransactionForm('${h(t.id)}')">Edit</button>
@@ -51,7 +53,7 @@ async function renderTransactions() {
               `).join('')}
             </tbody>
           </table>
-        </div>` : emptyState(SVG.receipt, 'No transactions yet', 'Add your first transaction to start tracking your spending.')}
+        </div>` : emptyState(SVG.receipt, 'No transactions yet', 'Add your first transaction to start tracking your spending.') }
       </div>
     `;
   } catch (e) {
@@ -67,6 +69,7 @@ async function showTransactionForm(id) {
     categoryId: '',
     pocketId: '',
     notes: '',
+    type: 'expense',
   };
   let title = 'Add Transaction';
 
@@ -75,7 +78,11 @@ async function showTransactionForm(id) {
     try {
       const { data: all } = await API.get('/api/transactions');
       const found = (all || []).find(t => t.id === id);
-      if (found) tx = { ...tx, ...found };
+      if (found) {
+        tx = { ...tx, ...found };
+        // Derive type from amount sign
+        tx.type = found.amount >= 0 ? 'income' : 'expense';
+      }
     } catch (e) {
       toast('Failed to load transaction: ' + e.message, 'error');
       return;
@@ -85,15 +92,29 @@ async function showTransactionForm(id) {
   try {
     const { data: categories } = await API.get('/api/categories');
     const { data: pockets } = await API.get('/api/pockets');
-    const catOptions = (categories || []).map(c =>
-      `<option value="${h(c.id)}" ${tx.categoryId === c.id ? 'selected' : ''}>${h(c.name)}</option>`
-    ).join('');
+
+    // Build category options filtered by type
+    const catOptions = (categories || [])
+      .filter(c => c.type === tx.type)
+      .map(c => `<option value="${h(c.id)}" ${tx.categoryId === c.id ? 'selected' : ''}>${h(c.name)}</option>`)
+      .join('');
     const pocketOptions = (pockets || []).filter(p => !p.isArchived).map(p =>
       `<option value="${h(p.id)}" ${tx.pocketId === p.id ? 'selected' : ''}>${h(p.icon || '')} ${h(p.name)}</option>`
     ).join('');
 
     showModal(title, `
       <form onsubmit="saveTransaction(event, '${id || ''}')">
+        <div class="form-group">
+          <label>Transaction Type</label>
+          <div class="type-toggle" style="display:flex;gap:8px;margin-bottom:4px">
+            <label style="flex:1;text-align:center;padding:10px;border:2px solid ${tx.type === 'expense' ? 'var(--red,#ef4444)' : 'var(--border,#333)'};border-radius:8px;cursor:pointer;font-weight:600;color:${tx.type === 'expense' ? 'var(--red,#ef4444)' : 'inherit'}">
+              <input type="radio" name="txType" value="expense" ${tx.type !== 'income' ? 'checked' : ''} onchange="onTxTypeChange(this.value)" style="display:none"> 💸 Expense
+            </label>
+            <label style="flex:1;text-align:center;padding:10px;border:2px solid ${tx.type === 'income' ? 'var(--green,#22c55e)' : 'var(--border,#333)'};border-radius:8px;cursor:pointer;font-weight:600;color:${tx.type === 'income' ? 'var(--green,#22c55e)' : 'inherit'}">
+              <input type="radio" name="txType" value="income" ${tx.type === 'income' ? 'checked' : ''} onchange="onTxTypeChange(this.value)" style="display:none"> 💰 Income
+            </label>
+          </div>
+        </div>
         <div class="form-group">
           <label>Title</label>
           <input name="title" value="${h(tx.title)}" required>
@@ -102,8 +123,8 @@ async function showTransactionForm(id) {
         <div class="form-row">
           <div class="form-group">
             <label>Amount (IDR)</label>
-            <input name="amount" type="number" class="num" value="${tx.amount || ''}" required>
-            <div class="form-hint">Use negative for expenses, positive for income.</div>
+            <input name="amount" type="number" class="num" value="${tx.amount ? Math.abs(tx.amount) : ''}" required min="1">
+            <div class="form-hint">Enter the amount (always positive).</div>
           </div>
           <div class="form-group">
             <label>Date</label>
@@ -112,12 +133,13 @@ async function showTransactionForm(id) {
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Category</label>
-            <select name="categoryId"><option value="">-- None --</option>${catOptions}</select>
+            <label>Category <span id="catTypeLabel" style="font-size:.75rem;color:var(--muted,#888)">(${tx.type === 'income' ? 'Income' : 'Expense'} categories)</span></label>
+            <select name="categoryId" id="categoryId"><option value="">-- None --</option>${catOptions}</select>
           </div>
           <div class="form-group">
             <label>Pocket</label>
             <select name="pocketId"><option value="">-- None --</option>${pocketOptions}</select>
+            <div class="form-hint" id="pocketHint">${tx.type === 'income' ? 'Selected pocket will be filled with this income.' : 'Selected pocket will be reduced by this expense.'}</div>
           </div>
         </div>
         <div class="form-group">
@@ -132,12 +154,51 @@ async function showTransactionForm(id) {
   }
 }
 
+// Handle type toggle: re-fetch categories filtered by type and update pocket hint
+async function onTxTypeChange(newType) {
+  // Update category options
+  try {
+    const { data: categories } = await API.get('/api/categories');
+    const filtered = (categories || []).filter(c => c.type === newType);
+    const sel = document.getElementById('categoryId');
+    if (sel) {
+      const currentVal = sel.value;
+      sel.innerHTML = '<option value="">-- None --</option>' + filtered.map(c =>
+        `<option value="${h(c.id)}" ${currentVal === c.id ? 'selected' : ''}>${h(c.name)}</option>`
+      ).join('');
+    }
+    // Update label
+    const label = document.getElementById('catTypeLabel');
+    if (label) label.textContent = `(${newType === 'income' ? 'Income' : 'Expense'} categories)`;
+    // Update pocket hint
+    const hint = document.getElementById('pocketHint');
+    if (hint) hint.textContent = newType === 'income' ? 'Selected pocket will be filled with this income.' : 'Selected pocket will be reduced by this expense.';
+    // Update toggle styling
+    document.querySelectorAll('input[name="txType"]').forEach(radio => {
+      const labelEl = radio.parentElement;
+      if (radio.value === 'expense') {
+        labelEl.style.borderColor = radio.checked ? 'var(--red,#ef4444)' : 'var(--border,#333)';
+        labelEl.style.color = radio.checked ? 'var(--red,#ef4444)' : 'inherit';
+      } else {
+        labelEl.style.borderColor = radio.checked ? 'var(--green,#22c55e)' : 'var(--border,#333)';
+        labelEl.style.color = radio.checked ? 'var(--green,#22c55e)' : 'inherit';
+      }
+    });
+  } catch (e) {
+    // silent
+  }
+}
+
 async function saveTransaction(e, id) {
   e.preventDefault();
   const f = e.target;
+  const type = f.txType?.value || 'expense';
+  const rawAmount = parseInt(f.amount.value) || 0;
+  // Backend handles sign: income → positive, expense → negative
   const body = {
     title: f.title.value,
-    amount: parseInt(f.amount.value) || 0,
+    amount: rawAmount,
+    type: type,
     date: f.date.value,
     categoryId: f.categoryId.value || undefined,
     pocketId: f.pocketId.value || undefined,

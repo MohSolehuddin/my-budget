@@ -3,30 +3,81 @@
     "name": "budget_categories",
     "type": "base",
     "fields": [
-      { "name": "name", "type": "text", "required": true },
-      { "name": "slug", "type": "text", "required": true, "max": 100 },
-      { "name": "description", "type": "editor" },
-      { "name": "icon", "type": "text" },
-      { "name": "color", "type": "text" },
-      { "name": "sort_order", "type": "number" },
-      { "name": "deleted_at", "type": "date" }
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "required": true,
+        "max": 100
+      },
+      {
+        "name": "description",
+        "type": "editor"
+      },
+      {
+        "name": "icon",
+        "type": "text"
+      },
+      {
+        "name": "color",
+        "type": "text"
+      },
+      {
+        "name": "sort_order",
+        "type": "number"
+      },
+      {
+        "name": "deleted_at",
+        "type": "date"
+      },
+      {
+        "name": "type",
+        "type": "select",
+        "values": [
+          "expense",
+          "income"
+        ],
+        "required": false
+      }
     ]
   },
   {
     "name": "budget_subcategories",
     "type": "base",
     "fields": [
-      { "name": "name", "type": "text", "required": true },
-      { "name": "slug", "type": "text", "required": true, "max": 100 },
-      { "name": "description", "type": "editor" },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "slug",
+        "type": "text",
+        "required": true,
+        "max": 100
+      },
+      {
+        "name": "description",
+        "type": "editor"
+      },
       {
         "name": "category",
         "type": "relation",
         "collectionId": "@budget_categories",
         "maxSelect": 1
       },
-      { "name": "sort_order", "type": "number" },
-      { "name": "deleted_at", "type": "date" }
+      {
+        "name": "sort_order",
+        "type": "number"
+      },
+      {
+        "name": "deleted_at",
+        "type": "date"
+      }
     ]
   },
   {
@@ -45,11 +96,30 @@
         "collectionId": "@budget_subcategories",
         "maxSelect": 1
       },
-      { "name": "amount", "type": "number", "required": true },
-      { "name": "period_start", "type": "date", "required": true },
-      { "name": "period_end", "type": "date", "required": true },
-      { "name": "created_at", "type": "date", "auto": true },
-      { "name": "deleted_at", "type": "date" }
+      {
+        "name": "amount",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "period_start",
+        "type": "date",
+        "required": true
+      },
+      {
+        "name": "period_end",
+        "type": "date",
+        "required": true
+      },
+      {
+        "name": "created_at",
+        "type": "date",
+        "auto": true
+      },
+      {
+        "name": "deleted_at",
+        "type": "date"
+      }
     ]
   },
   {
@@ -70,14 +140,52 @@
         "collectionId": "@budget_subcategories",
         "maxSelect": 1
       },
-      { "name": "title", "type": "text", "required": true },
-      { "name": "description", "type": "editor" },
-      { "name": "amount", "type": "number", "required": true },
-      { "name": "date", "type": "date", "required": true },
-      { "name": "payment_method", "type": "select", "values": ["cash", "debit", "credit", "digital_wallet"] },
-      { "name": "source", "type": "select", "values": ["manual", "telegram", "import"] },
-      { "name": "telegram_message_id", "type": "text" },
-      { "name": "deleted_at", "type": "date" }
+      {
+        "name": "title",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "editor"
+      },
+      {
+        "name": "amount",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "date",
+        "type": "date",
+        "required": true
+      },
+      {
+        "name": "payment_method",
+        "type": "select",
+        "values": [
+          "cash",
+          "debit",
+          "credit",
+          "digital_wallet"
+        ]
+      },
+      {
+        "name": "source",
+        "type": "select",
+        "values": [
+          "manual",
+          "telegram",
+          "import"
+        ]
+      },
+      {
+        "name": "telegram_message_id",
+        "type": "text"
+      },
+      {
+        "name": "deleted_at",
+        "type": "date"
+      }
     ]
   },
   {
@@ -90,70 +198,240 @@
         "collectionId": "@budgets",
         "maxSelect": 1
       },
-      { "name": "date", "type": "date", "required": true },
-      { "name": "allowance_cents", "type": "number", "required": true },
-      { "name": "spent_cents", "type": "number", "default": 0 },
-      { "name": "remaining_cents", "type": "number", "auto": true },
-      { "name": "last_updated", "type": "date", "auto": true }
+      {
+        "name": "date",
+        "type": "date",
+        "required": true
+      },
+      {
+        "name": "allowance_cents",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "spent_cents",
+        "type": "number",
+        "default": 0
+      },
+      {
+        "name": "remaining_cents",
+        "type": "number",
+        "auto": true
+      },
+      {
+        "name": "last_updated",
+        "type": "date",
+        "auto": true
+      }
     ]
   },
   {
     "name": "telegram_users",
     "type": "base",
     "fields": [
-      { "name": "telegram_id", "type": "number", "required": true, "unique": true },
-      { "name": "username", "type": "text" },
-      { "name": "first_name", "type": "text" },
-      { "name": "last_name", "type": "text" },
-      { "name": "is_active", "type": "bool", "default": true },
-      { "name": "last_seen", "type": "date" }
+      {
+        "name": "telegram_id",
+        "type": "number",
+        "required": true,
+        "unique": true
+      },
+      {
+        "name": "username",
+        "type": "text"
+      },
+      {
+        "name": "first_name",
+        "type": "text"
+      },
+      {
+        "name": "last_name",
+        "type": "text"
+      },
+      {
+        "name": "is_active",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "name": "last_seen",
+        "type": "date"
+      }
     ]
   },
   {
     "name": "telegram_settings",
     "type": "base",
     "fields": [
-      { "name": "key", "type": "text", "required": true, "unique": true },
-      { "name": "value", "type": "json" },
-      { "name": "updated_at", "type": "date", "auto": true }
+      {
+        "name": "key",
+        "type": "text",
+        "required": true,
+        "unique": true
+      },
+      {
+        "name": "value",
+        "type": "json"
+      },
+      {
+        "name": "updated_at",
+        "type": "date",
+        "auto": true
+      }
     ]
   },
   {
     "name": "debts",
     "type": "base",
     "fields": [
-      { "name": "name", "type": "text", "required": true },
-      { "name": "description", "type": "editor" },
-      { "name": "creditor", "type": "text" },
-      { "name": "original_amount", "type": "number", "required": true, "onlyInt": true },
-      { "name": "remaining_amount", "type": "number", "required": true, "onlyInt": true },
-      { "name": "interest_rate", "type": "number" },
-      { "name": "currency", "type": "text", "default": "IDR" },
-      { "name": "type", "type": "select", "required": true, "values": ["paylater", "credit_card", "loan", "installment", "other"] },
-      { "name": "status", "type": "select", "required": true, "values": ["active", "paid_off", "defaulted", "on_hold"], "default": "active" },
-      { "name": "start_date", "type": "date", "required": true },
-      { "name": "due_date", "type": "date" },
-      { "name": "term_months", "type": "number" },
-      { "name": "installment_amount", "type": "number", "onlyInt": true },
-      { "name": "payment_day", "type": "number" },
-      { "name": "auto_debit", "type": "bool", "default": false },
-      { "name": "linked_account", "type": "text" },
-      { "name": "notes", "type": "editor" },
-      { "name": "deleted_at", "type": "date" }
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "editor"
+      },
+      {
+        "name": "creditor",
+        "type": "text"
+      },
+      {
+        "name": "original_amount",
+        "type": "number",
+        "required": true,
+        "onlyInt": true
+      },
+      {
+        "name": "remaining_amount",
+        "type": "number",
+        "required": true,
+        "onlyInt": true
+      },
+      {
+        "name": "interest_rate",
+        "type": "number"
+      },
+      {
+        "name": "currency",
+        "type": "text",
+        "default": "IDR"
+      },
+      {
+        "name": "type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "paylater",
+          "credit_card",
+          "loan",
+          "installment",
+          "other"
+        ]
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "active",
+          "paid_off",
+          "defaulted",
+          "on_hold"
+        ],
+        "default": "active"
+      },
+      {
+        "name": "start_date",
+        "type": "date",
+        "required": true
+      },
+      {
+        "name": "due_date",
+        "type": "date"
+      },
+      {
+        "name": "term_months",
+        "type": "number"
+      },
+      {
+        "name": "installment_amount",
+        "type": "number",
+        "onlyInt": true
+      },
+      {
+        "name": "payment_day",
+        "type": "number"
+      },
+      {
+        "name": "auto_debit",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "name": "linked_account",
+        "type": "text"
+      },
+      {
+        "name": "notes",
+        "type": "editor"
+      },
+      {
+        "name": "deleted_at",
+        "type": "date"
+      }
     ]
   },
   {
     "name": "debt_payments",
     "type": "base",
     "fields": [
-      { "name": "debt", "type": "relation", "collectionId": "@debts", "maxSelect": 1, "required": true },
-      { "name": "amount", "type": "number", "required": true, "onlyInt": true },
-      { "name": "payment_date", "type": "date", "required": true },
-      { "name": "payment_method", "type": "select", "values": ["cash", "debit", "credit", "digital_wallet", "transfer"] },
-      { "name": "notes", "type": "editor" },
-      { "name": "is_installment", "type": "bool", "default": false },
-      { "name": "installment_number", "type": "number" },
-      { "name": "deleted_at", "type": "date" }
+      {
+        "name": "debt",
+        "type": "relation",
+        "collectionId": "@debts",
+        "maxSelect": 1,
+        "required": true
+      },
+      {
+        "name": "amount",
+        "type": "number",
+        "required": true,
+        "onlyInt": true
+      },
+      {
+        "name": "payment_date",
+        "type": "date",
+        "required": true
+      },
+      {
+        "name": "payment_method",
+        "type": "select",
+        "values": [
+          "cash",
+          "debit",
+          "credit",
+          "digital_wallet",
+          "transfer"
+        ]
+      },
+      {
+        "name": "notes",
+        "type": "editor"
+      },
+      {
+        "name": "is_installment",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "name": "installment_number",
+        "type": "number"
+      },
+      {
+        "name": "deleted_at",
+        "type": "date"
+      }
     ]
   }
 ]
