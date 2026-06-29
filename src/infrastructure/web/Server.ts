@@ -38,6 +38,13 @@ export const createServer = async () => {
 
   await server.register(fastifyCookie);
 
+  // Fix: Fastify rejects empty body when Content-Type is application/json (DELETE requests)
+  server.addHook('onRequest', async (request, reply) => {
+    if (request.method === 'DELETE' && request.headers['content-type']?.includes('application/json')) {
+      delete request.headers['content-type'];
+    }
+  });
+
   // Initialize shared PocketBase service
   const pocketbaseService = new PocketBaseService(
     process.env.POCKETBASE_URL || 'http://localhost:8091',
@@ -424,6 +431,11 @@ export const createServer = async () => {
         const userId = await getVerifiedUserId(request);
         if (!userId) {
           return reply.code(401).send({ error: 'Unauthorized' });
+        }
+
+        // Validate amount
+        if (!body.amount || body.amount <= 0) {
+          return reply.code(400).send({ error: 'Amount must be greater than 0' });
         }
 
         // Resolve category name → ID
