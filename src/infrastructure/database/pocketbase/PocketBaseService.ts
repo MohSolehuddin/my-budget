@@ -429,9 +429,10 @@ export class PocketBaseService {
         item_balance_map.set(p.id, p.balance);
       }
 
-      // Calculate dynamic balances from ALL transactions
-      // Displayed balance = initial balance (static field) + sum of all transaction amounts
-      const balances = await this.getPocketBalancesFromTransactions();
+      // Calculate dynamic balances from transactions AFTER latest cutoff
+      // Displayed balance = initial balance (static field) + sum of transaction amounts after cutoff
+      const cutoffDate = await this.getLatestCutoffDate().catch(() => null);
+      const balances = await this.getPocketBalancesFromTransactions(cutoffDate);
       for (const p of pockets) {
         const staticBalance = item_balance_map.get(p.id) || 0;
         const txBalance = balances.get(p.id) || 0;
@@ -444,15 +445,20 @@ export class PocketBaseService {
   }
 
   /**
-   * Calculate pocket balances dynamically from all transactions.
+   * Calculate pocket balances dynamically from transactions after a cutoff date.
    * Returns Map<pocketId, balance> where balance = sum of transaction amounts.
-   * This is the source of truth — static `balance` field is ignored.
+   * @param cutoffDate ISO date string (optional) — only transactions on or after this date are summed.
    */
-  async getPocketBalancesFromTransactions(): Promise<Map<string, number>> {
+  async getPocketBalancesFromTransactions(cutoffDate?: string | null): Promise<Map<string, number>> {
     try {
       const params = new URLSearchParams();
       params.set('perPage', '500');
-      params.set('filter', `pocket!=''`);
+      // Build filter: pocket is not empty AND (optionally) date >= cutoff
+      let filter = `pocket!=''`;
+      if (cutoffDate) {
+        filter += ` && date>='${cutoffDate} 00:00:00.000Z'`;
+      }
+      params.set('filter', filter);
       const data = await this.request(`/api/collections/transactions/records?${params.toString()}`);
       const balances = new Map<string, number>();
       for (const item of (data.items || [])) {
@@ -471,10 +477,15 @@ export class PocketBaseService {
     try {
       const data = await this.request(`/api/collections/pockets/records/${id}`);
       const staticBalance = data.balance || 0;
-      // Calculate dynamic balance from transactions for this pocket
+      // Calculate dynamic balance from transactions for this pocket AFTER latest cutoff
+      const cutoffDate = await this.getLatestCutoffDate().catch(() => null);
       const params = new URLSearchParams();
       params.set('perPage', '500');
-      params.set('filter', `pocket='${id}'`);
+      let filter = `pocket='${id}'`;
+      if (cutoffDate) {
+        filter += ` && date>='${cutoffDate} 00:00:00.000Z'`;
+      }
+      params.set('filter', filter);
       const txData = await this.request(`/api/collections/transactions/records?${params.toString()}`);
       const txSum = (txData.items || []).reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
       return {
