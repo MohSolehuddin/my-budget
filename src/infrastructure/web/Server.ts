@@ -283,9 +283,8 @@ export const createServer = async () => {
           debtSummary,
           pockets: pocketsWithBalance,
           recentTransactions,
-          budgets: budgets.map((b: any) => ({
-            ...b,
-            spentAmount: dashboardTx
+          budgets: budgets.map((b: any) => {
+            const spentAmount = dashboardTx
               .filter((t: any) => {
                 if (t.categoryId !== b.categoryId) return false;
                 if (t.amount >= 0) return false; // only count expenses
@@ -298,8 +297,38 @@ export const createServer = async () => {
                 }
                 return true;
               })
-              .reduce((sum: number, t: any) => sum + Math.abs(t.amount || 0), 0),
-          })),
+              .reduce((sum: number, t: any) => sum + Math.abs(t.amount || 0), 0);
+
+            // Calculate daily allowance for remaining period
+            const remaining = (b.amount || 0) - spentAmount;
+            let daysLeft: number | null = null;
+            let dailyAllowance: number | null = null;
+            if (b.periodStart && b.periodEnd) {
+              const today = new Date();
+              const todayStr = today.toISOString().split('T')[0];
+              const periodEnd = (b.periodEnd || '').split('T')[0].split(' ')[0];
+              // Days left including today (if today is within period)
+              const dEnd = new Date(periodEnd + 'T00:00:00');
+              const dToday = new Date(todayStr + 'T00:00:00');
+              const diffMs = dEnd.getTime() - dToday.getTime();
+              daysLeft = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1; // inclusive
+              if (daysLeft > 0) {
+                dailyAllowance = Math.floor(remaining / daysLeft);
+              } else if (daysLeft <= 0) {
+                // Period ended — no days left
+                dailyAllowance = 0;
+                daysLeft = 0;
+              }
+            }
+
+            return {
+              ...b,
+              spentAmount,
+              remaining,
+              daysLeft,
+              dailyAllowance,
+            };
+          }),
         },
       });
     } catch (error) {
@@ -466,7 +495,52 @@ export const createServer = async () => {
       const query = request.query as any;
       const pb = getUserPbService(request);
       const budgets = await pb.getBudgets(query.categoryId);
-      reply.send({ status: 'success', data: budgets });
+
+      // Get cutoff + transactions for spent/daily allowance calculation
+      const cutoffDate = await pb.getLatestCutoffDate().catch(() => null);
+      const transactions = await pb.getTransactions().catch(() => []);
+      const dashboardTx = cutoffDate
+        ? transactions.filter((t: any) => {
+            const txDate = (t.date || '').split('T')[0];
+            return txDate >= cutoffDate;
+          })
+        : transactions;
+
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+
+      const enriched = budgets.map((b: any) => {
+        const spentAmount = dashboardTx
+          .filter((t: any) => {
+            if (t.categoryId !== b.categoryId) return false;
+            if (t.amount >= 0) return false;
+            if (b.periodStart && b.periodEnd) {
+              const txDate = (t.date || '').split('T')[0].split(' ')[0];
+              const periodStart = (b.periodStart || '').split('T')[0].split(' ')[0];
+              const periodEnd = (b.periodEnd || '').split('T')[0].split(' ')[0];
+              return txDate >= periodStart && txDate <= periodEnd;
+            }
+            return true;
+          })
+          .reduce((sum: number, t: any) => sum + Math.abs(t.amount || 0), 0);
+
+        const remaining = (b.amount || 0) - spentAmount;
+        let daysLeft: number | null = null;
+        let dailyAllowance: number | null = null;
+        if (b.periodStart && b.periodEnd) {
+          const periodEnd = (b.periodEnd || '').split('T')[0].split(' ')[0];
+          const dEnd = new Date(periodEnd + 'T00:00:00');
+          const dToday = new Date(todayStr + 'T00:00:00');
+          const diffMs = dEnd.getTime() - dToday.getTime();
+          daysLeft = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+          dailyAllowance = daysLeft > 0 ? Math.floor(remaining / daysLeft) : 0;
+          if (daysLeft <= 0) daysLeft = 0;
+        }
+
+        return { ...b, spentAmount, remaining, daysLeft, dailyAllowance };
+      });
+
+      reply.send({ status: 'success', data: enriched });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to fetch budgets', details: (error as Error).message });
     }

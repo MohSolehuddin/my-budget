@@ -1,4 +1,4 @@
-// ===== BUDGETS MODULE v1.0.0 =====
+// ===== BUDGETS MODULE v1.1.0 =====
 // Contract: ui/contracts/UI_CONTRACTS.md
 // Exposes: renderBudgets, showBudgetForm, saveBudget, deleteBudget
 // Dependencies (global): API, h, formatIDR, formatDate, toast, showModal, closeModal,
@@ -12,7 +12,7 @@ async function renderBudgets() {
     const { data: budgets } = await API.get('/api/budgets');
     const { data: categories } = await API.get('/api/categories');
     const catMap = {};
-    (categories || []).forEach(c => { catMap[c.id] = c.name; });
+    (categories || []).forEach(c => { catMap[c.id] = c; });
 
     app.innerHTML = `
       <div class="page-header">
@@ -22,35 +22,77 @@ async function renderBudgets() {
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-header"><div class="card-title">All Budgets</div></div>
-        ${(budgets && budgets.length) ? `
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Category</th>
-                <th>Amount</th>
-                <th>Period</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${budgets.map(b => `
-                <tr>
-                  <td>${h(catMap[b.categoryId] || b.name || '-')}</td>
-                  <td class="num-cell">${formatIDR(b.amount)}</td>
-                  <td>${formatDate(b.periodStart)} &rarr; ${formatDate(b.periodEnd)}</td>
-                  <td>
-                    <button class="btn btn-sm btn-outline" onclick="showBudgetForm('${h(b.id)}')">Edit</button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteBudget('${h(b.id)}')">Delete</button>
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>` : emptyState(SVG.target, 'No budgets yet', 'Create a budget to track your spending limits per category.')}
-      </div>
+      ${(budgets && budgets.length) ? budgets.map(b => {
+        const cat = catMap[b.categoryId] || {};
+        const spent = b.spentAmount || 0;
+        const remaining = b.remaining != null ? b.remaining : (b.amount - spent);
+        const daysLeft = b.daysLeft;
+        const daily = b.dailyAllowance;
+        const pct = b.amount > 0 ? Math.min(100, Math.round((spent / b.amount) * 100)) : 0;
+        const overBudget = remaining < 0;
+        const barColor = overBudget ? 'red' : pct > 80 ? 'yellow' : 'green';
+        const catColor = cat.color || '#3b82f6';
+        const catIcon = cat.icon || '💰';
+
+        return `
+        <div class="card budget-card" style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="font-size:1.2rem">${h(catIcon)}</span>
+                <h3 style="margin:0;font-size:1rem">${h(b.name || cat.name || '-')}</h3>
+              </div>
+              <div style="font-size:0.75rem;color:var(--text2)">
+                ${formatDate(b.periodStart)} → ${formatDate(b.periodEnd)}
+              </div>
+            </div>
+            <div style="text-align:right;white-space:nowrap">
+              <div class="num-cell" style="font-size:1.1rem;font-weight:600;${overBudget ? 'color:var(--red)' : ''}">${formatIDR(remaining)}</div>
+              <div style="font-size:0.7rem;color:var(--text2)">remaining of ${formatIDR(b.amount)}</div>
+            </div>
+          </div>
+
+          <!-- Progress bar -->
+          <div style="margin:10px 0 6px;height:8px;border-radius:4px;background:var(--surface3);overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:var(--${barColor});border-radius:4px;transition:width 0.3s"></div>
+          </div>
+
+          <!-- Stats row -->
+          <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:0.8rem">
+            <div>
+              <span style="color:var(--text2)">Spent: </span>
+              <span style="font-weight:600;color:var(--red)">${formatIDR(spent)}</span>
+              <span style="color:var(--text2)"> (${pct}%)</span>
+            </div>
+            ${daysLeft != null ? `
+            <div>
+              <span style="color:var(--text2)">Days left: </span>
+              <span style="font-weight:600;${daysLeft <= 0 ? 'color:var(--red)' : ''}">${daysLeft}</span>
+            </div>` : ''}
+          </div>
+
+          <!-- Daily allowance highlight -->
+          ${daily != null && daysLeft > 0 ? `
+          <div style="margin-top:8px;padding:8px 12px;border-radius:8px;background:var(--surface2);border-left:3px solid var(--${barColor})">
+            <div style="font-size:0.7rem;color:var(--text2);margin-bottom:2px">💸 Harus habis maksimal per hari:</div>
+            <div style="font-size:1.1rem;font-weight:700;color:var(--${barColor})">${formatIDR(daily)}<span style="font-size:0.75rem;font-weight:400;color:var(--text2)"> /hari</span></div>
+          </div>` : ''}
+          ${daysLeft != null && daysLeft <= 0 ? `
+          <div style="margin-top:8px;padding:8px 12px;border-radius:8px;background:var(--surface2);border-left:3px solid var(--red)">
+            <div style="font-size:0.8rem;color:var(--red);font-weight:600">⏰ Periode budget sudah berakhir</div>
+          </div>` : ''}
+          ${overBudget && daysLeft > 0 ? `
+          <div style="margin-top:8px;padding:8px 12px;border-radius:8px;background:var(--surface2);border-left:3px solid var(--red)">
+            <div style="font-size:0.8rem;color:var(--red);font-weight:600">⚠️ Over budget! Pengeluaran melebihi budget</div>
+          </div>` : ''}
+
+          <!-- Actions -->
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="btn btn-sm btn-outline" onclick="showBudgetForm('${h(b.id)}')">Edit</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteBudget('${h(b.id)}')">Delete</button>
+          </div>
+        </div>`;
+      }).join('') : emptyState(SVG.target, 'No budgets yet', 'Create a budget to track your spending limits per category.')}
     `;
   } catch (e) {
     app.innerHTML = `<div class="card">${emptyState(SVG.target, 'Failed to load', h(e.message))}</div>`;
