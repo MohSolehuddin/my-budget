@@ -44,13 +44,27 @@ export const createServer = async () => {
     process.env.POCKETBASE_TOKEN
   );
 
-  // Initialize debt use cases
+  // Initialize debt use cases (shared — uses static token, may fail)
   const debtRepository = new PocketBaseDebtRepository(pocketbaseService);
   const listDebtsUseCase = new ListDebtsUseCase(debtRepository);
   const createDebtUseCase = new CreateDebtUseCase(debtRepository);
   const getDebtSummaryUseCase = new GetDebtSummaryUseCase(debtRepository);
   const payDebtUseCase = new PayDebtUseCase(debtRepository);
   const listDebtPaymentsUseCase = new ListDebtPaymentsUseCase(debtRepository);
+
+  // Create per-request debt use cases using user's own token
+  const getUserDebtUseCases = (request: any) => {
+    const pb = getUserPbService(request);
+    const repo = new PocketBaseDebtRepository(pb);
+    return {
+      list: new ListDebtsUseCase(repo),
+      create: new CreateDebtUseCase(repo),
+      summary: new GetDebtSummaryUseCase(repo),
+      pay: new PayDebtUseCase(repo),
+      listPayments: new ListDebtPaymentsUseCase(repo),
+      repo,
+    };
+  };
 
   // Initialize BudgetService
   let budgetService: BudgetService | undefined;
@@ -217,7 +231,7 @@ export const createServer = async () => {
       const [budgets, transactions, debtSummary, pockets, categories] = await Promise.all([
         pb.getBudgets().catch(() => []),
         pb.getTransactions().catch(() => []),
-        getDebtSummaryUseCase.execute().catch(() => null),
+        getUserDebtUseCases(request).summary.execute().catch(() => null),
         pb.getPockets().catch(() => []),
         pb.getCategories().catch(() => []),
       ]);
@@ -272,7 +286,18 @@ export const createServer = async () => {
           budgets: budgets.map((b: any) => ({
             ...b,
             spentAmount: dashboardTx
-              .filter((t: any) => t.categoryId === b.categoryId)
+              .filter((t: any) => {
+                if (t.categoryId !== b.categoryId) return false;
+                if (t.amount >= 0) return false; // only count expenses
+                // Filter by budget period if available
+                if (b.periodStart && b.periodEnd) {
+                  const txDate = (t.date || '').split('T')[0].split(' ')[0];
+                  const periodStart = (b.periodStart || '').split('T')[0].split(' ')[0];
+                  const periodEnd = (b.periodEnd || '').split('T')[0].split(' ')[0];
+                  return txDate >= periodStart && txDate <= periodEnd;
+                }
+                return true;
+              })
               .reduce((sum: number, t: any) => sum + Math.abs(t.amount || 0), 0),
           })),
         },
@@ -503,9 +528,9 @@ export const createServer = async () => {
   // ===== DEBTS =====
 
   // GET /api/debts
-  server.get('/api/debts', async (_request, reply) => {
+  server.get('/api/debts', async (request, reply) => {
     try {
-      const debts = await listDebtsUseCase.execute();
+      const debts = await getUserDebtUseCases(request).list.execute();
       reply.send({ status: 'success', data: debts });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to fetch debts', details: (error as Error).message });
@@ -518,7 +543,7 @@ export const createServer = async () => {
     async (request, reply) => {
       try {
         const body = request.body;
-        const debt = await createDebtUseCase.execute({
+        const debt = await getUserDebtUseCases(request).create.execute({
           name: body.name,
           originalAmount: body.originalAmount,
           remainingAmount: body.remainingAmount ?? body.originalAmount,
@@ -545,7 +570,7 @@ export const createServer = async () => {
     '/api/debts/:id',
     async (request, reply) => {
       try {
-        const debt = await debtRepository.update(request.params.id, request.body as any);
+        const debt = await getUserDebtUseCases(request).repo.update(request.params.id, request.body as any);
         reply.send({ status: 'success', data: debt });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to update debt', details: (error as Error).message });
@@ -556,7 +581,7 @@ export const createServer = async () => {
   // DELETE /api/debts/:id
   server.delete<{ Params: { id: string } }>('/api/debts/:id', async (request, reply) => {
     try {
-      await debtRepository.delete(request.params.id);
+      await getUserDebtUseCases(request).repo.delete(request.params.id);
       reply.send({ status: 'success', message: 'Debt deleted' });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to delete debt', details: (error as Error).message });
@@ -564,9 +589,9 @@ export const createServer = async () => {
   });
 
   // GET /api/debts/summary
-  server.get('/api/debts/summary', async (_request, reply) => {
+  server.get('/api/debts/summary', async (request, reply) => {
     try {
-      const summary = await getDebtSummaryUseCase.execute();
+      const summary = await getUserDebtUseCases(request).summary.execute();
       reply.send({ status: 'success', data: summary });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to fetch debt summary', details: (error as Error).message });
@@ -576,7 +601,7 @@ export const createServer = async () => {
   // GET /api/debts/:id/payments
   server.get<{ Params: { id: string } }>('/api/debts/:id/payments', async (request, reply) => {
     try {
-      const payments = await listDebtPaymentsUseCase.execute(request.params.id);
+      const payments = await getUserDebtUseCases(request).listPayments.execute(request.params.id);
       reply.send({ status: 'success', data: payments });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to fetch debt payments', details: (error as Error).message });
@@ -589,7 +614,7 @@ export const createServer = async () => {
     async (request, reply) => {
       try {
         const body = request.body;
-        const payment = await payDebtUseCase.execute({
+        const payment = await getUserDebtUseCases(request).pay.execute({
           debtId: request.params.id,
           amount: body.amount,
           paymentDate: body.paymentDate || new Date().toISOString().split('T')[0],

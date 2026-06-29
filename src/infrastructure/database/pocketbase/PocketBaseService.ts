@@ -459,10 +459,10 @@ export class PocketBaseService {
       const params = new URLSearchParams();
       params.set('perPage', '500');
       const data = await this.request(`/api/collections/pockets/records?${params.toString()}`);
-      return (data.items || []).map((item: any) => ({
+      const pockets = (data.items || []).map((item: any) => ({
         id: item.id,
         name: item.name,
-        balance: item.balance || 0,
+        balance: item.balance || 0, // fallback static, will be overridden
         icon: item.icon,
         color: item.color,
         type: item.type,
@@ -471,18 +471,55 @@ export class PocketBaseService {
         bankName: item.bank_name || '',
         isArchived: item.is_archived ?? false,
       }));
+
+      // Calculate dynamic balances from ALL transactions
+      const balances = await this.getPocketBalancesFromTransactions();
+      for (const p of pockets) {
+        p.balance = balances.get(p.id) ?? 0;
+      }
+      return pockets;
     } catch {
       return [];
+    }
+  }
+
+  /**
+   * Calculate pocket balances dynamically from all transactions.
+   * Returns Map<pocketId, balance> where balance = sum of transaction amounts.
+   * This is the source of truth — static `balance` field is ignored.
+   */
+  async getPocketBalancesFromTransactions(): Promise<Map<string, number>> {
+    try {
+      const params = new URLSearchParams();
+      params.set('perPage', '500');
+      params.set('filter', `pocket!=''`);
+      const data = await this.request(`/api/collections/transactions/records?${params.toString()}`);
+      const balances = new Map<string, number>();
+      for (const item of (data.items || [])) {
+        const pid = item.pocket;
+        if (!pid) continue;
+        const amt = item.amount || 0;
+        balances.set(pid, (balances.get(pid) || 0) + amt);
+      }
+      return balances;
+    } catch {
+      return new Map();
     }
   }
 
   async getPocketById(id: string): Promise<any | null> {
     try {
       const data = await this.request(`/api/collections/pockets/records/${id}`);
+      // Calculate dynamic balance from transactions for this pocket
+      const params = new URLSearchParams();
+      params.set('perPage', '500');
+      params.set('filter', `pocket='${id}'`);
+      const txData = await this.request(`/api/collections/transactions/records?${params.toString()}`);
+      const dynamicBalance = (txData.items || []).reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
       return {
         id: data.id,
         name: data.name,
-        balance: data.balance || 0,
+        balance: dynamicBalance,
         icon: data.icon,
         color: data.color,
         type: data.type,
