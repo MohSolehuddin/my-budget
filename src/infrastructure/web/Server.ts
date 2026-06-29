@@ -477,11 +477,16 @@ export const createServer = async () => {
   );
 
   // PUT /api/transactions/:id
-  server.put<{ Params: { id: string }; Body: { title?: string; amount?: number; date?: string; categoryId?: string; notes?: string } }>(
+  server.put<{ Params: { id: string }; Body: { title?: string; amount?: number; type?: string; date?: string; categoryId?: string; pocketId?: string; notes?: string } }>(
     '/api/transactions/:id',
     async (request, reply) => {
       try {
-        await getUserPbService(request).updateTransaction(request.params.id, request.body);
+        const body = request.body;
+        // Apply sign based on type (same logic as POST)
+        if (body.amount !== undefined && body.type) {
+          body.amount = body.type === 'income' ? Math.abs(body.amount) : -Math.abs(body.amount);
+        }
+        await getUserPbService(request).updateTransaction(request.params.id, body);
         reply.send({ status: 'success', message: 'Transaction updated' });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to update transaction', details: (error as Error).message });

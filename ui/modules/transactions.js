@@ -82,6 +82,10 @@ async function showTransactionForm(id) {
         tx = { ...tx, ...found };
         // Derive type from amount sign
         tx.type = found.amount >= 0 ? 'income' : 'expense';
+        // Parse PB date format "2026-06-28 00:00:00.000Z" → "2026-06-28" for <input type="date">
+        if (tx.date) {
+          tx.date = String(tx.date).split('T')[0].split(' ')[0];
+        }
       }
     } catch (e) {
       toast('Failed to load transaction: ' + e.message, 'error');
