@@ -82,6 +82,15 @@ export const createServer = async () => {
     return valid ? userId : null;
   };
 
+  // Create a per-request PocketBaseService using the user's own token.
+  // This ensures all data fetches are auth-scoped to the logged-in user
+  // and don't depend on a static (potentially stale) POCKETBASE_TOKEN.
+  const pbUrl = process.env.POCKETBASE_URL || 'http://localhost:8091';
+  const getUserPbService = (request: any): PocketBaseService => {
+    const token = getUserToken(request) || undefined;
+    return new PocketBaseService(pbUrl, token);
+  };
+
   // ===== AUTH ENDPOINTS =====
 
   // POST /api/auth/login
@@ -141,9 +150,10 @@ export const createServer = async () => {
   // ===== CUTOFFS =====
 
   // GET /api/cutoffs
-  server.get('/api/cutoffs', async (_request, reply) => {
+  server.get('/api/cutoffs', async (request, reply) => {
     try {
-      const cutoffs = await pocketbaseService.getCutoffs();
+      const pb = getUserPbService(request);
+      const cutoffs = await pb.getCutoffs();
       reply.send({ status: 'success', data: cutoffs });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to fetch cutoffs', details: (error as Error).message });
@@ -159,7 +169,7 @@ export const createServer = async () => {
         if (!userId) {
           return reply.code(401).send({ error: 'Unauthorized' });
         }
-        const result = await pocketbaseService.createCutoff({
+        const result = await getUserPbService(request).createCutoff({
           title: request.body.title,
           cutoffDate: request.body.cutoffDate,
           notes: request.body.notes,
@@ -177,7 +187,7 @@ export const createServer = async () => {
     '/api/cutoffs/:id',
     async (request, reply) => {
       try {
-        await pocketbaseService.updateCutoff(request.params.id, request.body);
+        await getUserPbService(request).updateCutoff(request.params.id, request.body);
         reply.send({ status: 'success', message: 'Cutoff updated' });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to update cutoff', details: (error as Error).message });
@@ -188,7 +198,7 @@ export const createServer = async () => {
   // DELETE /api/cutoffs/:id
   server.delete<{ Params: { id: string } }>('/api/cutoffs/:id', async (request, reply) => {
     try {
-      await pocketbaseService.deleteCutoff(request.params.id);
+      await getUserPbService(request).deleteCutoff(request.params.id);
       reply.send({ status: 'success', message: 'Cutoff deleted' });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to delete cutoff', details: (error as Error).message });
@@ -196,17 +206,19 @@ export const createServer = async () => {
   });
 
   // ===== SUMMARY =====
-  server.get('/api/summary', async (_request, reply) => {
+  server.get('/api/summary', async (request, reply) => {
     try {
+      const pb = getUserPbService(request);
+
       // Get latest cutoff date — transactions before this date are excluded from dashboard
-      const cutoffDate = await pocketbaseService.getLatestCutoffDate().catch(() => null);
+      const cutoffDate = await pb.getLatestCutoffDate().catch(() => null);
 
       const [budgets, transactions, debtSummary, pockets, categories] = await Promise.all([
-        pocketbaseService.getBudgets().catch(() => []),
-        pocketbaseService.getTransactions().catch(() => []),
+        pb.getBudgets().catch(() => []),
+        pb.getTransactions().catch(() => []),
         getDebtSummaryUseCase.execute().catch(() => null),
-        pocketbaseService.getPockets().catch(() => []),
-        pocketbaseService.getCategories().catch(() => []),
+        pb.getPockets().catch(() => []),
+        pb.getCategories().catch(() => []),
       ]);
 
       // Filter out transactions before cutoff date (they're history, not for dashboard)
@@ -272,9 +284,10 @@ export const createServer = async () => {
   // ===== CATEGORIES =====
 
   // GET /api/categories
-  server.get('/api/categories', async (_request, reply) => {
+  server.get('/api/categories', async (request, reply) => {
     try {
-      const categories = await pocketbaseService.getCategories();
+      const pb = getUserPbService(request);
+      const categories = await pb.getCategories();
       reply.send({ status: 'success', data: categories });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to fetch categories', details: (error as Error).message });
@@ -286,7 +299,7 @@ export const createServer = async () => {
     '/api/categories',
     async (request, reply) => {
       try {
-        const result = await pocketbaseService.createCategory(request.body);
+        const result = await getUserPbService(request).createCategory(request.body);
         reply.code(201).send({ status: 'success', data: result });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to create category', details: (error as Error).message });
@@ -299,7 +312,7 @@ export const createServer = async () => {
     '/api/categories/:id',
     async (request, reply) => {
       try {
-        await pocketbaseService.updateCategory(request.params.id, request.body);
+        await getUserPbService(request).updateCategory(request.params.id, request.body);
         reply.send({ status: 'success', message: 'Category updated' });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to update category', details: (error as Error).message });
@@ -310,7 +323,7 @@ export const createServer = async () => {
   // DELETE /api/categories/:id
   server.delete<{ Params: { id: string } }>('/api/categories/:id', async (request, reply) => {
     try {
-      await pocketbaseService.deleteCategory(request.params.id);
+      await getUserPbService(request).deleteCategory(request.params.id);
       reply.send({ status: 'success', message: 'Category deleted' });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to delete category', details: (error as Error).message });
@@ -323,7 +336,8 @@ export const createServer = async () => {
   server.get('/api/transactions', async (request, reply) => {
     try {
       const query = request.query as any;
-      let transactions = await pocketbaseService.getTransactions({
+      const pb = getUserPbService(request);
+      let transactions = await pb.getTransactions({
         categoryId: query.categoryId,
         startDate: query.startDate,
         endDate: query.endDate,
@@ -331,7 +345,7 @@ export const createServer = async () => {
 
       // If no explicit date filter, apply cutoff filter by default
       if (!query.startDate && !query.endDate) {
-        const cutoffDate = await pocketbaseService.getLatestCutoffDate().catch(() => null);
+        const cutoffDate = await pb.getLatestCutoffDate().catch(() => null);
         if (cutoffDate) {
           transactions = transactions.filter((t: any) => {
             const txDate = (t.date || '').split('T')[0];
@@ -359,9 +373,10 @@ export const createServer = async () => {
 
         // Resolve category name → ID
         let categoryId = body.categoryId || null;
+        const pb = getUserPbService(request);
         if (!categoryId && body.category) {
           const params = new URLSearchParams({ filter: `name='${body.category}'`, perPage: '1' });
-          const catData = await pocketbaseService.request(`/api/collections/budget_categories/records?${params.toString()}`);
+          const catData = await pb.request(`/api/collections/budget_categories/records?${params.toString()}`);
           categoryId = catData.items?.[0]?.id || null;
         }
 
@@ -369,7 +384,7 @@ export const createServer = async () => {
         let pocketId = body.pocketId || null;
         if (!pocketId && body.pocket) {
           const params = new URLSearchParams({ filter: `name='${body.pocket}'`, perPage: '1' });
-          const pocketData = await pocketbaseService.request(`/api/collections/pockets/records?${params.toString()}`);
+          const pocketData = await pb.request(`/api/collections/pockets/records?${params.toString()}`);
           pocketId = pocketData.items?.[0]?.id || null;
         }
 
@@ -385,7 +400,7 @@ export const createServer = async () => {
           source: 'manual',
         };
 
-        await pocketbaseService.createTransaction(record);
+        await pb.createTransaction(record);
 
         reply.code(201).send({ status: 'success', message: 'Transaction added' });
       } catch (error) {
@@ -399,7 +414,7 @@ export const createServer = async () => {
     '/api/transactions/:id',
     async (request, reply) => {
       try {
-        await pocketbaseService.updateTransaction(request.params.id, request.body);
+        await getUserPbService(request).updateTransaction(request.params.id, request.body);
         reply.send({ status: 'success', message: 'Transaction updated' });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to update transaction', details: (error as Error).message });
@@ -410,7 +425,7 @@ export const createServer = async () => {
   // DELETE /api/transactions/:id
   server.delete<{ Params: { id: string } }>('/api/transactions/:id', async (request, reply) => {
     try {
-      await pocketbaseService.deleteTransaction(request.params.id);
+      await getUserPbService(request).deleteTransaction(request.params.id);
       reply.send({ status: 'success', message: 'Transaction deleted' });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to delete transaction', details: (error as Error).message });
@@ -423,7 +438,8 @@ export const createServer = async () => {
   server.get('/api/budgets', async (request, reply) => {
     try {
       const query = request.query as any;
-      const budgets = await pocketbaseService.getBudgets(query.categoryId);
+      const pb = getUserPbService(request);
+      const budgets = await pb.getBudgets(query.categoryId);
       reply.send({ status: 'success', data: budgets });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to fetch budgets', details: (error as Error).message });
@@ -435,7 +451,8 @@ export const createServer = async () => {
     '/api/budgets',
     async (request, reply) => {
       try {
-        const result = await pocketbaseService.saveBudgetToPB(request.body);
+        const pb = getUserPbService(request);
+        const result = await pb.saveBudgetToPB(request.body);
         reply.code(201).send({ status: 'success', data: result });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to create budget', details: (error as Error).message });
@@ -448,7 +465,8 @@ export const createServer = async () => {
     '/api/budgets/:id',
     async (request, reply) => {
       try {
-        await pocketbaseService.updateBudget(request.params.id, request.body);
+        const pb = getUserPbService(request);
+        await pb.updateBudget(request.params.id, request.body);
         reply.send({ status: 'success', message: 'Budget updated' });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to update budget', details: (error as Error).message });
@@ -459,7 +477,8 @@ export const createServer = async () => {
   // DELETE /api/budgets/:id
   server.delete<{ Params: { id: string } }>('/api/budgets/:id', async (request, reply) => {
     try {
-      await pocketbaseService.deleteBudget(request.params.id);
+      const pb = getUserPbService(request);
+      await pb.deleteBudget(request.params.id);
       reply.send({ status: 'success', message: 'Budget deleted' });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to delete budget', details: (error as Error).message });
@@ -590,7 +609,7 @@ export const createServer = async () => {
     '/api/debts/:debtId/payments/:id',
     async (request, reply) => {
       try {
-        await pocketbaseService.updateDebtPayment(request.params.id, request.body);
+        await getUserPbService(request).updateDebtPayment(request.params.id, request.body);
         reply.send({ status: 'success', message: 'Payment updated' });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to update payment', details: (error as Error).message });
@@ -601,7 +620,7 @@ export const createServer = async () => {
   // DELETE /api/debts/:debtId/payments/:id
   server.delete<{ Params: { debtId: string; id: string } }>('/api/debts/:debtId/payments/:id', async (request, reply) => {
     try {
-      await pocketbaseService.deleteDebtPayment(request.params.id);
+      await getUserPbService(request).deleteDebtPayment(request.params.id);
       reply.send({ status: 'success', message: 'Payment deleted' });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to delete payment', details: (error as Error).message });
@@ -611,9 +630,10 @@ export const createServer = async () => {
   // ===== POCKETS =====
 
   // GET /api/pockets
-  server.get('/api/pockets', async (_request, reply) => {
+  server.get('/api/pockets', async (request, reply) => {
     try {
-      const pockets = await pocketbaseService.getPockets();
+      const pb = getUserPbService(request);
+      const pockets = await pb.getPockets();
       reply.send({ status: 'success', data: pockets });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to fetch pockets', details: (error as Error).message });
@@ -625,7 +645,7 @@ export const createServer = async () => {
     '/api/pockets',
     async (request, reply) => {
       try {
-        const result = await pocketbaseService.createPocket(request.body);
+        const result = await getUserPbService(request).createPocket(request.body);
         reply.code(201).send({ status: 'success', data: result });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to create pocket', details: (error as Error).message });
@@ -638,7 +658,7 @@ export const createServer = async () => {
     '/api/pockets/:id',
     async (request, reply) => {
       try {
-        await pocketbaseService.updatePocket(request.params.id, request.body);
+        await getUserPbService(request).updatePocket(request.params.id, request.body);
         reply.send({ status: 'success', message: 'Pocket updated' });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to update pocket', details: (error as Error).message });
@@ -649,7 +669,7 @@ export const createServer = async () => {
   // DELETE /api/pockets/:id
   server.delete<{ Params: { id: string } }>('/api/pockets/:id', async (request, reply) => {
     try {
-      await pocketbaseService.deletePocket(request.params.id);
+      await getUserPbService(request).deletePocket(request.params.id);
       reply.send({ status: 'success', message: 'Pocket deleted' });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to delete pocket', details: (error as Error).message });
@@ -662,7 +682,7 @@ export const createServer = async () => {
     async (request, reply) => {
       try {
         const { fromId, toId, amount } = request.body;
-        await pocketbaseService.transferBetweenPockets(fromId, toId, amount);
+        await getUserPbService(request).transferBetweenPockets(fromId, toId, amount);
         reply.send({ status: 'success', message: 'Transfer completed' });
       } catch (error) {
         reply.code(500).send({ error: 'Transfer failed', details: (error as Error).message });
@@ -676,7 +696,7 @@ export const createServer = async () => {
   server.get('/api/savings-targets', async (request, reply) => {
     try {
       const query = request.query as any;
-      const targets = await pocketbaseService.getSavingsTargets({
+      const targets = await getUserPbService(request).getSavingsTargets({
         pocketId: query.pocketId,
         status: query.status,
       });
@@ -695,7 +715,7 @@ export const createServer = async () => {
         if (!userId) {
           return reply.code(401).send({ error: 'Unauthorized' });
         }
-        const result = await pocketbaseService.createSavingsTarget({
+        const result = await getUserPbService(request).createSavingsTarget({
           ...request.body,
           userId,
         });
@@ -712,7 +732,7 @@ export const createServer = async () => {
     '/api/savings-targets/:id',
     async (request, reply) => {
       try {
-        await pocketbaseService.updateSavingsTarget(request.params.id, request.body);
+        await getUserPbService(request).updateSavingsTarget(request.params.id, request.body);
         reply.send({ status: 'success', message: 'Savings target updated' });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to update savings target', details: (error as Error).message });
@@ -723,7 +743,7 @@ export const createServer = async () => {
   // DELETE /api/savings-targets/:id
   server.delete<{ Params: { id: string } }>('/api/savings-targets/:id', async (request, reply) => {
     try {
-      await pocketbaseService.deleteSavingsTarget(request.params.id);
+      await getUserPbService(request).deleteSavingsTarget(request.params.id);
       reply.send({ status: 'success', message: 'Savings target deleted' });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to delete savings target', details: (error as Error).message });
@@ -736,7 +756,7 @@ export const createServer = async () => {
   server.get('/api/recurring-transactions', async (request, reply) => {
     try {
       const query = request.query as any;
-      const recurring = await pocketbaseService.getRecurringTransactions({
+      const recurring = await getUserPbService(request).getRecurringTransactions({
         pocketId: query.pocketId,
         isActive: query.isActive === undefined ? undefined : query.isActive === 'true',
       });
@@ -755,7 +775,7 @@ export const createServer = async () => {
         if (!userId) {
           return reply.code(401).send({ error: 'Unauthorized' });
         }
-        const result = await pocketbaseService.createRecurringTransaction({
+        const result = await getUserPbService(request).createRecurringTransaction({
           ...request.body,
           userId,
         });
@@ -772,7 +792,7 @@ export const createServer = async () => {
     '/api/recurring-transactions/:id',
     async (request, reply) => {
       try {
-        await pocketbaseService.updateRecurringTransaction(request.params.id, request.body);
+        await getUserPbService(request).updateRecurringTransaction(request.params.id, request.body);
         reply.send({ status: 'success', message: 'Recurring transaction updated' });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to update recurring transaction', details: (error as Error).message });
@@ -783,7 +803,7 @@ export const createServer = async () => {
   // DELETE /api/recurring-transactions/:id
   server.delete<{ Params: { id: string } }>('/api/recurring-transactions/:id', async (request, reply) => {
     try {
-      await pocketbaseService.deleteRecurringTransaction(request.params.id);
+      await getUserPbService(request).deleteRecurringTransaction(request.params.id);
       reply.send({ status: 'success', message: 'Recurring transaction deleted' });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to delete recurring transaction', details: (error as Error).message });
@@ -791,9 +811,9 @@ export const createServer = async () => {
   });
 
   // POST /api/recurring-transactions/generate — auto-generate due recurring transactions
-  server.post('/api/recurring-transactions/generate', async (_request, reply) => {
+  server.post('/api/recurring-transactions/generate', async (request, reply) => {
     try {
-      const result = await pocketbaseService.generateRecurringTransactions();
+      const result = await getUserPbService(request).generateRecurringTransactions();
       reply.send({ status: 'success', data: result });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to generate recurring transactions', details: (error as Error).message });
@@ -806,7 +826,7 @@ export const createServer = async () => {
   server.get('/api/recurring-budgets', async (request, reply) => {
     try {
       const query = request.query as any;
-      const recurring = await pocketbaseService.getRecurringBudgets({
+      const recurring = await getUserPbService(request).getRecurringBudgets({
         pocketId: query.pocketId,
         isActive: query.isActive === undefined ? undefined : query.isActive === 'true',
       });
@@ -825,7 +845,7 @@ export const createServer = async () => {
         if (!userId) {
           return reply.code(401).send({ error: 'Unauthorized' });
         }
-        const result = await pocketbaseService.createRecurringBudget({
+        const result = await getUserPbService(request).createRecurringBudget({
           ...request.body,
           userId,
         });
@@ -842,7 +862,7 @@ export const createServer = async () => {
     '/api/recurring-budgets/:id',
     async (request, reply) => {
       try {
-        await pocketbaseService.updateRecurringBudget(request.params.id, request.body);
+        await getUserPbService(request).updateRecurringBudget(request.params.id, request.body);
         reply.send({ status: 'success', message: 'Recurring budget updated' });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to update recurring budget', details: (error as Error).message });
@@ -853,7 +873,7 @@ export const createServer = async () => {
   // DELETE /api/recurring-budgets/:id
   server.delete<{ Params: { id: string } }>('/api/recurring-budgets/:id', async (request, reply) => {
     try {
-      await pocketbaseService.deleteRecurringBudget(request.params.id);
+      await getUserPbService(request).deleteRecurringBudget(request.params.id);
       reply.send({ status: 'success', message: 'Recurring budget deleted' });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to delete recurring budget', details: (error as Error).message });
@@ -861,9 +881,9 @@ export const createServer = async () => {
   });
 
   // POST /api/recurring-budgets/generate — auto-generate due recurring budgets
-  server.post('/api/recurring-budgets/generate', async (_request, reply) => {
+  server.post('/api/recurring-budgets/generate', async (request, reply) => {
     try {
-      const result = await pocketbaseService.generateRecurringBudgets();
+      const result = await getUserPbService(request).generateRecurringBudgets();
       reply.send({ status: 'success', data: result });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to generate recurring budgets', details: (error as Error).message });
@@ -877,7 +897,7 @@ export const createServer = async () => {
     try {
       const query = request.query as any;
       const limit = Math.max(1, Math.min(500, parseInt(query.limit, 10) || 10));
-      const summaries = await pocketbaseService.getAISummaries({
+      const summaries = await getUserPbService(request).getAISummaries({
         period: query.period,
         startDate: query.startDate,
         endDate: query.endDate,
@@ -898,7 +918,7 @@ export const createServer = async () => {
         if (!userId) {
           return reply.code(401).send({ error: 'Unauthorized' });
         }
-        const result = await pocketbaseService.createAISummary({
+        const result = await getUserPbService(request).createAISummary({
           ...request.body,
           userId,
         });
@@ -913,7 +933,7 @@ export const createServer = async () => {
   // DELETE /api/ai-summaries/:id
   server.delete<{ Params: { id: string } }>('/api/ai-summaries/:id', async (request, reply) => {
     try {
-      await pocketbaseService.deleteAISummary(request.params.id);
+      await getUserPbService(request).deleteAISummary(request.params.id);
       reply.send({ status: 'success', message: 'AI summary deleted' });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to delete AI summary', details: (error as Error).message });
@@ -926,7 +946,7 @@ export const createServer = async () => {
   server.get('/api/predictions', async (request, reply) => {
     try {
       const query = request.query as any;
-      const predictions = await pocketbaseService.getPredictions({
+      const predictions = await getUserPbService(request).getPredictions({
         type: query.type,
         targetMonth: query.targetMonth,
         isAuto: query.isAuto === undefined ? undefined : query.isAuto === 'true',
@@ -946,7 +966,7 @@ export const createServer = async () => {
         if (!userId) {
           return reply.code(401).send({ error: 'Unauthorized' });
         }
-        const result = await pocketbaseService.createPrediction({
+        const result = await getUserPbService(request).createPrediction({
           ...request.body,
           userId,
         });
@@ -963,7 +983,7 @@ export const createServer = async () => {
     '/api/predictions/:id',
     async (request, reply) => {
       try {
-        await pocketbaseService.updatePrediction(request.params.id, request.body);
+        await getUserPbService(request).updatePrediction(request.params.id, request.body);
         reply.send({ status: 'success', message: 'Prediction updated' });
       } catch (error) {
         reply.code(500).send({ error: 'Failed to update prediction', details: (error as Error).message });
@@ -974,7 +994,7 @@ export const createServer = async () => {
   // DELETE /api/predictions/:id
   server.delete<{ Params: { id: string } }>('/api/predictions/:id', async (request, reply) => {
     try {
-      await pocketbaseService.deletePrediction(request.params.id);
+      await getUserPbService(request).deletePrediction(request.params.id);
       reply.send({ status: 'success', message: 'Prediction deleted' });
     } catch (error) {
       reply.code(500).send({ error: 'Failed to delete prediction', details: (error as Error).message });
@@ -987,7 +1007,7 @@ export const createServer = async () => {
     async (request, reply) => {
       try {
         const userId = await getVerifiedUserId(request);
-        const result = await pocketbaseService.generatePredictions({
+        const result = await getUserPbService(request).generatePredictions({
           monthsHistory: request.body?.monthsHistory,
           userId: userId || undefined,
         });
