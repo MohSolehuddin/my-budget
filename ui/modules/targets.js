@@ -190,6 +190,8 @@ async function showSavingsTargetForm(id) {
 
 async function saveSavingsTarget(e, id) {
   e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit], button:not([type])');
+  if (!lockForm(btn)) return;
   const f = e.target;
   const body = {
     title: f.title.value,
@@ -215,6 +217,7 @@ async function saveSavingsTarget(e, id) {
     renderSavingsTargets();
   } catch (err) {
     toast('Error: ' + err.message, 'error');
+    unlockForm(btn);
   }
 }
 

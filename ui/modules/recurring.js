@@ -208,6 +208,8 @@ async function showRecurringForm(id) {
 
 async function saveRecurring(e, id) {
   e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit], button:not([type])');
+  if (!lockForm(btn)) return;
   const f = e.target;
   const body = {
     title: f.title.value,
@@ -234,6 +236,7 @@ async function saveRecurring(e, id) {
     renderRecurringTransactions();
   } catch (err) {
     toast('Error: ' + err.message, 'error');
+    unlockForm(btn);
   }
 }
 

@@ -67,5 +67,42 @@ function renderPage(page) {
   }
 }
 
+// ===== CONTEXT-AWARE FAB =====
+const FAB_ACTIONS = {
+  'summary': () => showTransactionForm(),
+  'transactions': () => showTransactionForm(),
+  'budgets': () => showBudgetForm(),
+  'debts': () => showDebtForm(),
+  'pockets': () => showPocketForm(),
+  'categories': () => showCategoryForm(),
+  'cutoffs': () => showCutoffForm(),
+  'savings-targets': () => showSavingsTargetForm(),
+  'recurring-transactions': () => showRecurringForm(),
+  'recurring-budgets': () => showRecurringBudgetForm(),
+  // 'insights' has no add form — FAB hidden
+};
+
+function fabAdd() {
+  const action = FAB_ACTIONS[currentPage];
+  if (action) action();
+}
+
+function updateFabVisibility() {
+  const fab = document.querySelector('.fab');
+  if (!fab) return;
+  if (FAB_ACTIONS[currentPage]) {
+    fab.style.display = '';
+  } else {
+    fab.style.display = 'none';
+  }
+}
+
+// Patch navigate to also update FAB
+const _origNavigate = navigate;
+navigate = function(page) {
+  _origNavigate(page);
+  updateFabVisibility();
+};
+
 // Bind nav links on load
 bindNavLinks();

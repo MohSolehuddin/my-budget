@@ -107,6 +107,8 @@ async function showCutoffForm(id) {
 
 async function saveCutoff(e, id) {
   e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit], button:not([type])');
+  if (!lockForm(btn)) return;
   const f = e.target;
   const body = {
     title: f.title.value,
@@ -125,6 +127,7 @@ async function saveCutoff(e, id) {
     renderCutoffs();
   } catch (err) {
     toast('Error: ' + err.message, 'error');
+    unlockForm(btn);
   }
 }
 

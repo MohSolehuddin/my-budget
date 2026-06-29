@@ -194,6 +194,8 @@ async function showRecurringBudgetForm(id) {
 // ===== SAVE =====
 async function saveRecurringBudget(e, id) {
   e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit], button:not([type])');
+  if (!lockForm(btn)) return;
   const f = e.target;
   const today = new Date().toISOString().split('T')[0];
   const body = {
@@ -220,6 +222,7 @@ async function saveRecurringBudget(e, id) {
     renderRecurringBudgets();
   } catch (err) {
     toast('Error: ' + err.message, 'error');
+    unlockForm(btn);
   }
 }
 

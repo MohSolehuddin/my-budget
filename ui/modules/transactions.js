@@ -195,6 +195,8 @@ async function onTxTypeChange(newType) {
 
 async function saveTransaction(e, id) {
   e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit], button:not([type])');
+  if (!lockForm(btn)) return;
   const f = e.target;
   const type = f.txType?.value || 'expense';
   const rawAmount = parseInt(f.amount.value) || 0;
@@ -220,6 +222,7 @@ async function saveTransaction(e, id) {
     renderTransactions();
   } catch (e) {
     toast('Error: ' + e.message, 'error');
+    unlockForm(btn);
   }
 }
 

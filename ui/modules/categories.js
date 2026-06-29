@@ -89,6 +89,8 @@ async function showCategoryForm(id) {
 
 async function saveCategory(e, id) {
   e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit], button:not([type])');
+  if (!lockForm(btn)) return;
   const f = e.target;
   const body = {
     name: f.name.value,
@@ -108,6 +110,7 @@ async function saveCategory(e, id) {
     renderCategories();
   } catch (err) {
     toast('Error: ' + err.message, 'error');
+    unlockForm(btn);
   }
 }
 

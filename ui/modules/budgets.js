@@ -160,6 +160,8 @@ async function showBudgetForm(id) {
 
 async function saveBudget(e, id) {
   e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit], button:not([type])');
+  if (!lockForm(btn)) return;
   const f = e.target;
   const body = {
     categoryId: f.categoryId.value || undefined,
@@ -179,6 +181,7 @@ async function saveBudget(e, id) {
     renderBudgets();
   } catch (e) {
     toast('Error: ' + e.message, 'error');
+    unlockForm(btn);
   }
 }
 

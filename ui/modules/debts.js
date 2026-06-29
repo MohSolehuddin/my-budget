@@ -231,6 +231,8 @@ async function showDebtForm(id) {
 
 async function saveDebt(e, id) {
   e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit], button:not([type])');
+  if (!lockForm(btn)) return;
   const f = e.target;
   const body = {
     name: f.name.value,
@@ -258,6 +260,7 @@ async function saveDebt(e, id) {
     renderDebts();
   } catch (e) {
     toast('Error: ' + e.message, 'error');
+    unlockForm(btn);
   }
 }
 
@@ -320,6 +323,8 @@ async function showPayDebtForm(debtId) {
 
 async function payDebt(e, debtId) {
   e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit], button:not([type])');
+  if (!lockForm(btn)) return;
   const f = e.target;
   const body = {
     amount: parseInt(f.amount.value) || 0,
@@ -334,5 +339,6 @@ async function payDebt(e, debtId) {
     renderDebts();
   } catch (e) {
     toast('Error: ' + e.message, 'error');
+    unlockForm(btn);
   }
 }

@@ -52,6 +52,31 @@ function closeModal() {
   const modal = document.getElementById('modal');
   if (!modal) return;
   modal.classList.add('hidden');
+  // Clear any form lock
+  _formSubmitting = false;
+}
+
+// ===== ANTI-DOUBLE-SUBMIT =====
+let _formSubmitting = false;
+
+function lockForm(btn) {
+  if (!btn) return true;
+  if (btn.dataset.locked === '1') return false; // already locked → block
+  btn.dataset.locked = '1';
+  btn.dataset.originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  return true;
+}
+
+function unlockForm(btn) {
+  if (!btn) return;
+  btn.dataset.locked = '';
+  btn.disabled = false;
+  if (btn.dataset.originalText) {
+    btn.textContent = btn.dataset.originalText;
+    delete btn.dataset.originalText;
+  }
 }
 
 // ===== COMPONENTS =====

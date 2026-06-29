@@ -84,6 +84,8 @@ function logout() {
 
 async function handleLogin(e) {
   e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit], button:not([type])');
+  if (!lockForm(btn)) return;
   const f = e.target;
   const errEl = document.getElementById('login-error');
   errEl.classList.add('hidden');
@@ -97,6 +99,7 @@ async function handleLogin(e) {
     if (!res.ok) {
       errEl.textContent = data.error || 'Login failed';
       errEl.classList.remove('hidden');
+      unlockForm(btn);
       return;
     }
     setAuth(data.data.token, data.data.user);
@@ -105,6 +108,7 @@ async function handleLogin(e) {
   } catch (err) {
     errEl.textContent = 'Network error: ' + (err?.message || 'Unknown');
     errEl.classList.remove('hidden');
+    unlockForm(btn);
   }
 }
 

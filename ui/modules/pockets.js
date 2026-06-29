@@ -177,6 +177,8 @@ async function showPocketForm(id) {
 
 async function savePocket(e, id) {
   e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit], button:not([type])');
+  if (!lockForm(btn)) return;
   const f = e.target;
   const body = {
     name: f.name.value,
@@ -202,6 +204,7 @@ async function savePocket(e, id) {
     renderPockets();
   } catch (e) {
     toast('Error: ' + e.message, 'error');
+    unlockForm(btn);
   }
 }
 
@@ -253,9 +256,12 @@ async function showTransferForm() {
 
 async function doTransfer(e) {
   e.preventDefault();
+  const btn = e.target.querySelector('button[type=submit], button:not([type])');
+  if (!lockForm(btn)) return;
   const f = e.target;
   if (f.fromId.value === f.toId.value) {
     toast('Cannot transfer to the same pocket', 'error');
+    unlockForm(btn);
     return;
   }
   try {
@@ -269,5 +275,6 @@ async function doTransfer(e) {
     renderPockets();
   } catch (e) {
     toast('Error: ' + e.message, 'error');
+    unlockForm(btn);
   }
 }
