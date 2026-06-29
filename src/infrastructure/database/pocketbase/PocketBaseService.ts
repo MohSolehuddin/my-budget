@@ -112,17 +112,8 @@ export class PocketBaseService {
       method: 'POST',
       body: JSON.stringify(record),
     });
-    
-    if (record.pocket && record.amount) {
-      try {
-        const pocket = await this.getPocketById(record.pocket);
-        if (pocket) {
-          await this.updatePocket(pocket.id, { balance: (pocket.balance || 0) + record.amount });
-        }
-      } catch (e) {
-        console.error('Failed to update pocket balance on create:', e);
-      }
-    }
+    // Note: pocket balance is now calculated dynamically (initial + sum of transactions)
+    // No need to update pocket.balance field on transaction create.
     return data;
   }
 
@@ -143,38 +134,7 @@ export class PocketBaseService {
     if (data.notes !== undefined) body.notes = data.notes;
     
     const result = await this.request(`/api/collections/transactions/records/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
-
-    try {
-      const oldPocketId = oldTx.pocket;
-      const newPocketId = body.pocket !== undefined ? body.pocket : oldPocketId;
-      const oldAmount = oldTx.amount || 0;
-      const newAmount = result.amount || 0;
-
-      if (oldPocketId === newPocketId) {
-        if (oldPocketId && oldAmount !== newAmount) {
-          const pocket = await this.getPocketById(oldPocketId);
-          if (pocket) {
-            await this.updatePocket(oldPocketId, { balance: (pocket.balance || 0) - oldAmount + newAmount });
-          }
-        }
-      } else {
-        if (oldPocketId) {
-          const oldPocket = await this.getPocketById(oldPocketId);
-          if (oldPocket) {
-            await this.updatePocket(oldPocketId, { balance: (oldPocket.balance || 0) - oldAmount });
-          }
-        }
-        if (newPocketId) {
-          const newPocket = await this.getPocketById(newPocketId);
-          if (newPocket) {
-            await this.updatePocket(newPocketId, { balance: (newPocket.balance || 0) + newAmount });
-          }
-        }
-      }
-    } catch (e) {
-      console.error('Failed to update pocket balances on transaction update:', e);
-    }
-
+    // Note: pocket balance is now calculated dynamically, no need to update static field.
     return result;
   }
 
@@ -187,17 +147,7 @@ export class PocketBaseService {
     }
     
     await this.request(`/api/collections/transactions/records/${id}`, { method: 'DELETE' });
-
-    if (oldTx.pocket && oldTx.amount) {
-      try {
-        const pocket = await this.getPocketById(oldTx.pocket);
-        if (pocket) {
-          await this.updatePocket(pocket.id, { balance: (pocket.balance || 0) - oldTx.amount });
-        }
-      } catch (e) {
-        console.error('Failed to revert pocket balance on delete:', e);
-      }
-    }
+    // Note: pocket balance is now calculated dynamically, no need to update static field.
   }
 
   async getCategories(): Promise<any[]> {
@@ -462,7 +412,8 @@ export class PocketBaseService {
       const pockets = (data.items || []).map((item: any) => ({
         id: item.id,
         name: item.name,
-        balance: item.balance || 0, // fallback static, will be overridden
+        balance: item.balance || 0, // initial balance, will be adjusted with transaction sums
+        initialBalance: item.balance || 0,
         icon: item.icon,
         color: item.color,
         type: item.type,
@@ -472,10 +423,19 @@ export class PocketBaseService {
         isArchived: item.is_archived ?? false,
       }));
 
+      // Build static balance map before overriding
+      const item_balance_map = new Map<string, number>();
+      for (const p of pockets) {
+        item_balance_map.set(p.id, p.balance);
+      }
+
       // Calculate dynamic balances from ALL transactions
+      // Displayed balance = initial balance (static field) + sum of all transaction amounts
       const balances = await this.getPocketBalancesFromTransactions();
       for (const p of pockets) {
-        p.balance = balances.get(p.id) ?? 0;
+        const staticBalance = item_balance_map.get(p.id) || 0;
+        const txBalance = balances.get(p.id) || 0;
+        p.balance = staticBalance + txBalance;
       }
       return pockets;
     } catch {
@@ -510,16 +470,18 @@ export class PocketBaseService {
   async getPocketById(id: string): Promise<any | null> {
     try {
       const data = await this.request(`/api/collections/pockets/records/${id}`);
+      const staticBalance = data.balance || 0;
       // Calculate dynamic balance from transactions for this pocket
       const params = new URLSearchParams();
       params.set('perPage', '500');
       params.set('filter', `pocket='${id}'`);
       const txData = await this.request(`/api/collections/transactions/records?${params.toString()}`);
-      const dynamicBalance = (txData.items || []).reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
+      const txSum = (txData.items || []).reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
       return {
         id: data.id,
         name: data.name,
-        balance: dynamicBalance,
+        balance: staticBalance + txSum, // dynamic balance for display
+        initialBalance: staticBalance, // static field for editing
         icon: data.icon,
         color: data.color,
         type: data.type,
@@ -568,12 +530,48 @@ export class PocketBaseService {
   }
 
   async transferBetweenPockets(fromId: string, toId: string, amount: number): Promise<void> {
-    const from = (await this.getPockets()).find(p => p.id === fromId);
-    const to = (await this.getPockets()).find(p => p.id === toId);
-    if (!from || !to) throw new Error('Pocket not found');
-    if (from.balance < amount) throw new Error('Insufficient balance');
-    await this.updatePocket(fromId, { balance: from.balance - amount });
-    await this.updatePocket(toId, { balance: to.balance + amount });
+    // Balance is now dynamic (initial + sum of transactions).
+    // Transfer creates two transactions: expense from source, income to destination.
+    const today = new Date().toISOString().split('T')[0];
+    const transferCat = await this.getTransferCategoryId();
+
+    // Create expense transaction from source pocket
+    await this.request('/api/collections/transactions/records', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: 'Transfer antar kantong',
+        amount: -Math.abs(amount),
+        type: 'expense',
+        date: today,
+        pocket: fromId,
+        category: transferCat,
+        source: 'manual',
+      }),
+    });
+
+    // Create income transaction to destination pocket
+    await this.request('/api/collections/transactions/records', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: 'Transfer antar kantong',
+        amount: Math.abs(amount),
+        type: 'income',
+        date: today,
+        pocket: toId,
+        category: transferCat,
+        source: 'manual',
+      }),
+    });
+  }
+
+  private async getTransferCategoryId(): Promise<string | null> {
+    try {
+      const params = new URLSearchParams({ filter: `name='Transfer'`, perPage: '1' });
+      const data = await this.request(`/api/collections/budget_categories/records?${params.toString()}`);
+      return data.items?.[0]?.id || null;
+    } catch {
+      return null;
+    }
   }
 
   // ===== CUTOFFS =====

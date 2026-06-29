@@ -124,7 +124,8 @@ async function showPocketForm(id) {
       <div class="form-row">
         <div class="form-group">
           <label>Initial Balance (IDR)</label>
-          <input name="balance" type="number" class="num" value="${pocket.balance || ''}" required>
+          <input name="balance" type="number" class="num" value="${pocket.initialBalance !== undefined ? pocket.initialBalance : (pocket.balance || '')}" required>
+          <div class="form-hint">Starting balance before any transactions. Current actual balance: ${formatIDR(pocket.balance || 0)}</div>
         </div>
         <div class="form-group">
           <label>Type</label>
