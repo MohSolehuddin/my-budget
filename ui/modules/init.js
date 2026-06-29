@@ -1,9 +1,14 @@
-// ===== INIT MODULE v1.0.0 =====
+// ===== INIT MODULE v1.1.0 =====
 // Contract: ui/contracts/UI_CONTRACTS.md
 // Entry point: checks for existing auth token and restores session.
 
 (async function init() {
   if (!authToken) return; // login screen is visible by default
+
+  // Restore token expiry from stored token
+  if (typeof decodeJwtExp === 'function') {
+    tokenExpiry = decodeJwtExp(authToken);
+  }
 
   try {
     const { data } = await API.get('/api/auth/me');

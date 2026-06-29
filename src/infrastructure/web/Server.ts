@@ -77,8 +77,9 @@ export const createServer = async () => {
     const decoded = decodeJWT(token);
     const userId = decoded?.id;
     if (!userId) return null;
-    // Verify user still exists in PocketBase (token may be expired/user deleted)
-    const valid = await pocketbaseService.verifyUserId(userId);
+    // Verify user still exists in PocketBase using the user's own token
+    const userPb = getUserPbService(request);
+    const valid = await userPb.verifyUserId(userId);
     return valid ? userId : null;
   };
 
