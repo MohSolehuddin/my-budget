@@ -21,7 +21,7 @@ Personal finance manager. PocketBase-only persistence (no Actual Budget sync). B
 - Auth uses `identity` field, NOT `email` (PB v0.36+ breaking change)
 - Superuser auth: `POST /api/collections/_superusers/auth-with-password` with `{identity, password}`
 - Date format: `"2026-06-27 00:00:00.000Z"` (space separator, not T)
-- `pockets.balance` is REQUIRED — rejects 0/empty/null. Use admin panel or superuser patch for zero balance.
+- `pockets.balance` is optional (required=false) — accepts 0. Acts as **initial balance**; actual balance = initial + sum of all transactions for that pocket.
 - Collection rules: `@request.auth.id != ""` for all collections
 
 ### Server (Server.ts)
